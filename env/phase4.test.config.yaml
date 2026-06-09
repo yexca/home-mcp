@@ -1,0 +1,73 @@
+server:
+  host: 127.0.0.1
+  port: 8787
+
+artifacts:
+  root: ./tmp/test-phase4-artifacts
+  public_base_url: http://127.0.0.1:8787/artifacts
+  max_artifact_bytes: 1048576
+
+database:
+  path: ./tmp/test-phase4-artifacts/metadata.sqlite3
+
+limits:
+  tts_jobs_per_caller_per_day: 20
+  matrix_messages_per_room_per_minute: 5
+
+callers:
+  host_assistant:
+    role: admin
+    token_env: GATEWAY_TOKEN_HOST
+    shared_artifact_read: true
+  role_default:
+    role: role_play
+    token_env: GATEWAY_TOKEN_ROLE_DEFAULT
+    shared_artifact_read: false
+
+policy:
+  default_allow: false
+  anonymous_allowed_tools:
+    - health_check
+  allowed_matrix_rooms:
+    - "!allowed:example.test"
+  high_risk_allowed_callers:
+    role_default:
+      - matrix_send_audio
+  audio_mime_types:
+    - audio/ogg
+    - audio/mpeg
+    - audio/wav
+
+modules:
+  image:
+    enabled: false
+  tts:
+    enabled: true
+    provider: mock
+    default_voice: narrator
+    voices:
+      - narrator
+      - calm
+    default_language: en-US
+    languages:
+      - en-US
+      - ja-JP
+    default_format: wav
+    allowed_formats:
+      - ogg
+      - mp3
+      - wav
+    allowed_mime_types:
+      - audio/ogg
+      - audio/mpeg
+      - audio/wav
+    max_text_chars: 32
+    default_speed: 1.0
+    min_speed: 0.5
+    max_speed: 2.0
+  matrix:
+    enabled: true
+    homeserver: http://127.0.0.1:1
+    access_token: ${MATRIX_ACCESS_TOKEN}
+    timeout_seconds: 2
+    max_text_chars: 64

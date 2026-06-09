@@ -25,6 +25,7 @@ database:
 limits:
   sync_tool_timeout_seconds: 120
   image_jobs_per_caller_per_day: 20
+  tts_jobs_per_caller_per_day: 100
   max_image_jobs_global: 2
   max_image_jobs_per_caller: 1
   max_tts_jobs_global: 2
@@ -45,6 +46,7 @@ policy:
   default_allow: false
   anonymous_allowed_tools:
     - health_check
+  high_risk_allowed_callers: {}
   allowed_matrix_rooms: []
   allowed_printers: []
   printable_mime_types:
@@ -98,7 +100,36 @@ modules:
       allowed_image_url_hosts: []
   tts:
     enabled: false
+    provider: local_http
+    default_voice: default
+    voices:
+      - default
+    default_language: ja-JP
+    languages:
+      - ja-JP
+      - en-US
+    default_format: wav
+    allowed_formats:
+      - ogg
+      - mp3
+      - wav
+    allowed_mime_types:
+      - audio/ogg
+      - audio/mpeg
+      - audio/wav
+    max_text_chars: 4000
+    default_speed: 1.0
+    min_speed: 0.5
+    max_speed: 2.0
+    local_http:
+      url: ${TTS_LOCAL_HTTP_URL}
+      api_key: ${TTS_API_KEY}
+      timeout_seconds: 30
   matrix:
     enabled: false
+    homeserver: ${MATRIX_HOMESERVER}
+    access_token: ${MATRIX_ACCESS_TOKEN}
+    timeout_seconds: 30
+    max_text_chars: 4000
   printer:
     enabled: false

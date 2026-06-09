@@ -103,6 +103,8 @@ def _validate(data: dict[str, Any]) -> None:
     if not data["database"].get("path"):
         raise ValueError("database.path is required")
     _validate_image_config(data.get("modules", {}).get("image", {}))
+    _validate_tts_config(data.get("modules", {}).get("tts", {}))
+    _validate_matrix_config(data.get("modules", {}).get("matrix", {}))
     Path(data["artifacts"]["root"]).mkdir(parents=True, exist_ok=True)
 
 
@@ -119,3 +121,34 @@ def _validate_image_config(image_config: dict[str, Any]) -> None:
     default_size = image_config.get("default_size")
     if not default_size or default_size not in allowed_sizes:
         raise ValueError("modules.image.default_size must be in allowed_sizes")
+
+
+def _validate_tts_config(tts_config: dict[str, Any]) -> None:
+    if not tts_config or not bool(tts_config.get("enabled", False)):
+        return
+    provider = tts_config.get("provider", "mock")
+    if provider not in {"local_http", "mock"}:
+        raise ValueError("modules.tts.provider must be local_http or mock")
+    voices = tts_config.get("voices") or []
+    default_voice = tts_config.get("default_voice")
+    if not default_voice or default_voice not in voices:
+        raise ValueError("modules.tts.default_voice must be in voices")
+    languages = tts_config.get("languages") or []
+    default_language = tts_config.get("default_language")
+    if not default_language or default_language not in languages:
+        raise ValueError("modules.tts.default_language must be in languages")
+    allowed_formats = tts_config.get("allowed_formats") or []
+    default_format = tts_config.get("default_format")
+    if not default_format or default_format not in allowed_formats:
+        raise ValueError("modules.tts.default_format must be in allowed_formats")
+    if provider == "local_http" and not tts_config.get("local_http", {}).get("url"):
+        raise ValueError("modules.tts.local_http.url is required")
+
+
+def _validate_matrix_config(matrix_config: dict[str, Any]) -> None:
+    if not matrix_config or not bool(matrix_config.get("enabled", False)):
+        return
+    if not matrix_config.get("homeserver"):
+        raise ValueError("modules.matrix.homeserver is required")
+    if not matrix_config.get("access_token"):
+        raise ValueError("modules.matrix.access_token is required")
