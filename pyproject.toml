@@ -1,0 +1,14 @@
+[project]
+name = "home-mcp-gateway"
+version = "0.1.0"
+description = "Local MCP gateway core infrastructure for ZeroClaw integrations."
+requires-python = ">=3.11"
+dependencies = [
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = []
+
+[tool.home_mcp_gateway]
+test_config = "env/test.config.yaml"

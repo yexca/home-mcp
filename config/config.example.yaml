@@ -1,0 +1,73 @@
+server:
+  name: home_mcp_gateway
+  version: 0.1.0
+  host: 127.0.0.1
+  port: 8787
+  mcp_path: /mcp
+  artifact_path: /artifacts
+
+artifacts:
+  root: ./artifacts
+  public_base_url: http://127.0.0.1:8787/artifacts
+  retention_days:
+    image: 30
+    audio: 30
+    document: 30
+    print: 7
+    temp: 1
+  max_artifact_bytes: 52428800
+
+database:
+  path: ./artifacts/metadata.sqlite3
+  wal: true
+  busy_timeout_ms: 5000
+
+limits:
+  sync_tool_timeout_seconds: 120
+  image_jobs_per_caller_per_day: 20
+  max_image_jobs_global: 2
+  max_image_jobs_per_caller: 1
+  max_tts_jobs_global: 2
+  matrix_messages_per_room_per_minute: 5
+  max_print_jobs_global: 1
+
+callers:
+  host_assistant:
+    role: admin
+    token_env: GATEWAY_TOKEN_HOST
+    shared_artifact_read: true
+  role_default:
+    role: role_play
+    token_env: GATEWAY_TOKEN_ROLE_DEFAULT
+    shared_artifact_read: false
+
+policy:
+  default_allow: false
+  anonymous_allowed_tools:
+    - health_check
+  allowed_matrix_rooms: []
+  allowed_printers: []
+  printable_mime_types:
+    - application/pdf
+    - image/png
+    - image/jpeg
+  audio_mime_types:
+    - audio/ogg
+    - audio/mpeg
+    - audio/wav
+
+audit:
+  sink: sqlite
+  retention_days: 90
+  prompt_summary_chars: 200
+  log_provider_urls: false
+
+modules:
+  image:
+    enabled: false
+  tts:
+    enabled: false
+  matrix:
+    enabled: false
+  printer:
+    enabled: false
