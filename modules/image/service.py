@@ -220,6 +220,9 @@ def download_image_url(url: str, image_config: dict[str, Any]) -> DownloadedImag
         raise
     except (TimeoutError, socket.timeout) as exc:
         raise GatewayError(PROVIDER_TIMEOUT, "provider image download timed out", retryable=True) from exc
+    except error.HTTPError as exc:
+        exc.close()
+        raise GatewayError(PROVIDER_UNAVAILABLE, "provider image download failed", retryable=True) from exc
     except error.URLError as exc:
         if isinstance(exc.reason, (TimeoutError, socket.timeout)):
             raise GatewayError(PROVIDER_TIMEOUT, "provider image download timed out", retryable=True) from exc

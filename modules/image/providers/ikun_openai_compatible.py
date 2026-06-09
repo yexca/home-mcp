@@ -135,7 +135,9 @@ class IkunOpenAICompatibleProvider:
             with self.opener(req, timeout=self.timeout_seconds) as response:
                 return response.read()
         except error.HTTPError as exc:
-            raise _map_http_error(exc) from exc
+            gateway_error = _map_http_error(exc)
+            exc.close()
+            raise gateway_error from exc
         except (TimeoutError, socket.timeout) as exc:
             raise GatewayError(PROVIDER_TIMEOUT, "image provider timed out", retryable=True) from exc
         except error.URLError as exc:

@@ -72,7 +72,9 @@ class LocalHttpTTSProvider:
                     format=format,
                 )
         except error.HTTPError as exc:
-            raise _map_http_error(exc) from exc
+            gateway_error = _map_http_error(exc)
+            exc.close()
+            raise gateway_error from exc
         except (TimeoutError, socket.timeout) as exc:
             raise GatewayError(PROVIDER_TIMEOUT, "tts provider timed out", retryable=True) from exc
         except error.URLError as exc:
