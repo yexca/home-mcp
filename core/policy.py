@@ -36,7 +36,7 @@ class PolicyEngine:
     def resolve_caller(
         self,
         authorization: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        trusted_connection_metadata: dict[str, Any] | None = None,
         remote_addr: str | None = None,
     ) -> CallerIdentity:
         token = None
@@ -51,10 +51,11 @@ class PolicyEngine:
                         role=spec.get("role", "role_play"),
                         shared_artifact_read=bool(spec.get("shared_artifact_read", False)),
                     )
-        if metadata and metadata.get("caller") in self.settings.callers:
-            spec = self.settings.callers[metadata["caller"]]
+        if trusted_connection_metadata and trusted_connection_metadata.get("caller") in self.settings.callers:
+            caller_id = trusted_connection_metadata["caller"]
+            spec = self.settings.callers[caller_id]
             return CallerIdentity(
-                caller_id=metadata["caller"],
+                caller_id=caller_id,
                 role=spec.get("role", "role_play"),
                 shared_artifact_read=bool(spec.get("shared_artifact_read", False)),
             )

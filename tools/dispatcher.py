@@ -25,6 +25,7 @@ class ToolDispatcher:
         *,
         authorization: str | None = None,
         metadata: dict[str, Any] | None = None,
+        trusted_connection_metadata: dict[str, Any] | None = None,
         remote_addr: str | None = None,
     ) -> dict[str, Any]:
         request_id = new_request_id()
@@ -35,7 +36,7 @@ class ToolDispatcher:
         try:
             definition = self.registry.get(tool_name)
             validated = validate_arguments(definition.input_schema, arguments)
-            caller = self.services.policy.resolve_caller(authorization, metadata, remote_addr)
+            caller = self.services.policy.resolve_caller(authorization, trusted_connection_metadata, remote_addr)
             input_summary = self.services.audit.summarize_input(validated)
             if definition.creates_job:
                 job = self.services.jobs.create(

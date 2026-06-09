@@ -42,7 +42,11 @@ def main() -> None:
     httpd = create_http_server(services, registry, dispatcher)
     host, port = httpd.server_address
     print(f"home_mcp_gateway listening on http://{host}:{port}")
-    httpd.serve_forever()
+    try:
+        httpd.serve_forever()
+    finally:
+        httpd.server_close()
+        services.close()
 
 
 if __name__ == "__main__":

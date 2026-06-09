@@ -20,6 +20,15 @@ class CoreServices:
     audit: AuditLogger
     limits: InMemoryRateLimiter
 
+    def close(self) -> None:
+        self.artifacts.conn.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
+
 
 @dataclass(slots=True)
 class RequestContext:
