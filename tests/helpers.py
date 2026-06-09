@@ -18,3 +18,18 @@ def fresh_gateway():
     settings.raw["artifacts"]["root"] = str(root)
     settings.raw["database"]["path"] = str(root / "metadata.sqlite3")
     return build_services(settings)
+
+
+def fresh_image_gateway():
+    os.environ["CONFIG_PATH"] = "env/image.test.config.yaml"
+    os.environ["GATEWAY_TOKEN_HOST"] = "test-host-token"
+    os.environ["GATEWAY_TOKEN_ROLE_DEFAULT"] = "test-role-token"
+    os.environ["IMAGE_API_BASE_URL"] = "http://127.0.0.1:1"
+    os.environ["IMAGE_API_MODEL"] = "test-image-model"
+    os.environ["IMAGE_API_KEY"] = "test-image-api-key"
+    settings = load_settings()
+    Path("tmp").mkdir(exist_ok=True)
+    root = Path(tempfile.mkdtemp(prefix="gateway-image-test-", dir="tmp"))
+    settings.raw["artifacts"]["root"] = str(root)
+    settings.raw["database"]["path"] = str(root / "metadata.sqlite3")
+    return build_services(settings)

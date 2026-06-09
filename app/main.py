@@ -7,6 +7,7 @@ from core.db import connect_database
 from core.jobs import JobManager
 from core.limits import InMemoryRateLimiter
 from core.policy import PolicyEngine
+from modules.image.manifest import register_image_tools
 from tools.builtin import register_builtin_tools
 from tools.dispatcher import ToolDispatcher
 from tools.registry import ToolRegistry
@@ -31,6 +32,7 @@ def build_services(settings: Settings | None = None) -> tuple[CoreServices, Tool
     )
     registry = ToolRegistry()
     register_builtin_tools(registry)
+    register_image_tools(registry, settings)
     dispatcher = ToolDispatcher(registry, services)
     return services, registry, dispatcher
 

@@ -102,4 +102,20 @@ def _validate(data: dict[str, Any]) -> None:
         raise ValueError("artifacts.root is required")
     if not data["database"].get("path"):
         raise ValueError("database.path is required")
+    _validate_image_config(data.get("modules", {}).get("image", {}))
     Path(data["artifacts"]["root"]).mkdir(parents=True, exist_ok=True)
+
+
+def _validate_image_config(image_config: dict[str, Any]) -> None:
+    if not image_config or not bool(image_config.get("enabled", False)):
+        return
+    if image_config.get("provider") != "ikun":
+        raise ValueError("modules.image.provider must be ikun")
+    ikun = image_config.get("ikun", {})
+    for key in ("base_url", "model", "api_key"):
+        if not ikun.get(key):
+            raise ValueError(f"missing required image provider setting: {key}")
+    allowed_sizes = image_config.get("allowed_sizes") or []
+    default_size = image_config.get("default_size")
+    if not default_size or default_size not in allowed_sizes:
+        raise ValueError("modules.image.default_size must be in allowed_sizes")

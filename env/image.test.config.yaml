@@ -1,0 +1,50 @@
+server:
+  host: 127.0.0.1
+  port: 8787
+
+artifacts:
+  root: ./tmp/test-image-artifacts
+  public_base_url: http://127.0.0.1:8787/artifacts
+  max_artifact_bytes: 1048576
+
+database:
+  path: ./tmp/test-image-artifacts/metadata.sqlite3
+
+limits:
+  image_jobs_per_caller_per_day: 20
+
+callers:
+  host_assistant:
+    role: admin
+    token_env: GATEWAY_TOKEN_HOST
+    shared_artifact_read: true
+  role_default:
+    role: role_play
+    token_env: GATEWAY_TOKEN_ROLE_DEFAULT
+    shared_artifact_read: false
+
+modules:
+  image:
+    enabled: true
+    provider: ikun
+    default_size: 1024x1024
+    allowed_sizes:
+      - 1024x1024
+      - 1024x1536
+    allowed_qualities:
+      - auto
+      - high
+    allowed_output_formats:
+      - png
+      - jpeg
+      - webp
+    max_prompt_chars: 100
+    max_download_bytes: 1024
+    allow_http_image_urls: false
+    ikun:
+      base_url: ${IMAGE_API_BASE_URL}
+      model: ${IMAGE_API_MODEL}
+      api_key: ${IMAGE_API_KEY}
+      timeout_seconds: 5
+      allowed_image_url_hosts:
+        - cdn.example.test

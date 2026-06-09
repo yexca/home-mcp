@@ -65,6 +65,30 @@ audit:
 modules:
   image:
     enabled: false
+    provider: ikun
+    default_size: 1024x1024
+    allowed_sizes:
+      - 1024x1024
+      - 1024x1536
+      - 1536x1024
+    allowed_qualities:
+      - auto
+      - low
+      - medium
+      - high
+    allowed_output_formats:
+      - png
+      - jpeg
+      - webp
+    max_prompt_chars: 4000
+    max_download_bytes: 10485760
+    allow_http_image_urls: false
+    ikun:
+      base_url: ${IMAGE_API_BASE_URL}
+      model: ${IMAGE_API_MODEL}
+      api_key: ${IMAGE_API_KEY}
+      timeout_seconds: 60
+      allowed_image_url_hosts: []
   tts:
     enabled: false
   matrix:
