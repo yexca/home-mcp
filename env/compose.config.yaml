@@ -1,0 +1,39 @@
+server:
+  host: 0.0.0.0
+  port: 8787
+
+artifacts:
+  root: /data/artifacts
+  public_base_url: http://127.0.0.1:8787/artifacts
+  max_artifact_bytes: 52428800
+
+database:
+  path: /data/artifacts/metadata.sqlite3
+
+callers:
+  host_assistant:
+    role: admin
+    token_env: GATEWAY_TOKEN_HOST
+    shared_artifact_read: true
+  role_default:
+    role: role_play
+    token_env: GATEWAY_TOKEN_ROLE_DEFAULT
+    shared_artifact_read: false
+
+policy:
+  default_allow: false
+  anonymous_allowed_tools:
+    - health_check
+  allowed_matrix_rooms: []
+  allowed_printers: []
+  high_risk_allowed_callers: {}
+
+modules:
+  image:
+    enabled: false
+  tts:
+    enabled: false
+  matrix:
+    enabled: false
+  printer:
+    enabled: false

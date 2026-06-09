@@ -34,3 +34,6 @@ def register_matrix_tools(registry: ToolRegistry, settings: Settings) -> None:
             creates_job=True,
         )
     )
+
+
+register_tools = register_matrix_tools

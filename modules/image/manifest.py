@@ -39,3 +39,6 @@ def register_image_tools(registry: ToolRegistry, settings: Settings) -> None:
             creates_job=True,
         )
     )
+
+
+register_tools = register_image_tools

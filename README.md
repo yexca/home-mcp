@@ -1,8 +1,8 @@
 # home_mcp_gateway
 
-Phase 1 implementation of a local MCP gateway core. It provides a runnable
-HTTP skeleton, core tool dispatch, SQLite-backed jobs/audit/artifacts, and
-safe built-in tools for health, job status, and artifact metadata.
+Local MCP gateway for ZeroClaw integrations. It provides HTTP MCP endpoints,
+tool dispatch, SQLite-backed jobs/audit/artifacts, module-based integrations,
+and Docker/Compose deployment support.
 
 ## Run
 
@@ -17,6 +17,15 @@ Default local endpoint:
 - `GET /readyz`
 - `POST /mcp`
 - `GET /artifacts/{artifact_id}`
+
+## Docker
+
+```powershell
+docker compose up --build
+```
+
+Compose mounts `env/compose.config.yaml` and stores artifacts in the
+`home-mcp-artifacts` volume.
 
 ## Test
 

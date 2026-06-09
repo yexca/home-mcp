@@ -9,8 +9,8 @@ from urllib import error, request
 from urllib.parse import urlparse
 
 from core.errors import GatewayError, INVALID_ARGUMENT, PROVIDER_TIMEOUT, PROVIDER_UNAVAILABLE, UNSUPPORTED_MEDIA_TYPE
+from modules.image.providers import ImageProvider, create_image_provider
 from modules.image.providers.ikun_openai_compatible import (
-    IkunOpenAICompatibleProvider,
     ProviderEditImage,
     ProviderImageOutput,
     ProviderImageResponse,
@@ -38,7 +38,7 @@ class DownloadedImage:
 
 
 class ImageGenerationService:
-    def __init__(self, provider: IkunOpenAICompatibleProvider, downloader: Any | None = None) -> None:
+    def __init__(self, provider: ImageProvider, downloader: Any | None = None) -> None:
         self.provider = provider
         self.downloader = downloader or download_image_url
 
@@ -126,12 +126,12 @@ class ImageGenerationService:
 
 
 async def image_generate(arguments: dict[str, Any], ctx: RequestContext) -> dict[str, Any]:
-    provider = IkunOpenAICompatibleProvider.from_settings(ctx.config)
+    provider = create_image_provider(ctx.config)
     return await ImageGenerationService(provider).generate(arguments, ctx)
 
 
 async def image_edit(arguments: dict[str, Any], ctx: RequestContext) -> dict[str, Any]:
-    provider = IkunOpenAICompatibleProvider.from_settings(ctx.config)
+    provider = create_image_provider(ctx.config)
     return await ImageGenerationService(provider).edit(arguments, ctx)
 
 

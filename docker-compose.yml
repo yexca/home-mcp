@@ -1,0 +1,40 @@
+services:
+  home-mcp:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    image: home-mcp-gateway:0.1.0
+    container_name: home-mcp-gateway
+    environment:
+      CONFIG_PATH: /app/env/compose.config.yaml
+      GATEWAY_TOKEN_HOST: ${GATEWAY_TOKEN_HOST:-}
+      GATEWAY_TOKEN_ROLE_DEFAULT: ${GATEWAY_TOKEN_ROLE_DEFAULT:-}
+      IMAGE_API_BASE_URL: ${IMAGE_API_BASE_URL:-}
+      IMAGE_API_MODEL: ${IMAGE_API_MODEL:-}
+      IMAGE_API_KEY: ${IMAGE_API_KEY:-}
+      TTS_LOCAL_HTTP_URL: ${TTS_LOCAL_HTTP_URL:-}
+      TTS_API_KEY: ${TTS_API_KEY:-}
+      MATRIX_HOMESERVER: ${MATRIX_HOMESERVER:-}
+      MATRIX_ACCESS_TOKEN: ${MATRIX_ACCESS_TOKEN:-}
+      PRINTER_BRIDGE_URL: ${PRINTER_BRIDGE_URL:-}
+      PRINTER_BRIDGE_API_KEY: ${PRINTER_BRIDGE_API_KEY:-}
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./env/compose.config.yaml:/app/env/compose.config.yaml:ro
+      - home-mcp-artifacts:/data/artifacts
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json, urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8787/healthz', timeout=3)); raise SystemExit(0 if data.get('ok') else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  home-mcp-artifacts:
