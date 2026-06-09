@@ -49,3 +49,12 @@ def _validate_value(field: str, value: Any, spec: dict[str, Any]) -> None:
             raise GatewayError(INVALID_ARGUMENT, f"argument too short: {field}")
         if "maxLength" in spec and len(value) > int(spec["maxLength"]):
             raise GatewayError(INVALID_ARGUMENT, f"argument too long: {field}")
+    if isinstance(value, list):
+        if "minItems" in spec and len(value) < int(spec["minItems"]):
+            raise GatewayError(INVALID_ARGUMENT, f"not enough items for argument: {field}")
+        if "maxItems" in spec and len(value) > int(spec["maxItems"]):
+            raise GatewayError(INVALID_ARGUMENT, f"too many items for argument: {field}")
+        item_spec = spec.get("items")
+        if isinstance(item_spec, dict):
+            for index, item in enumerate(value):
+                _validate_value(f"{field}[{index}]", item, item_spec)

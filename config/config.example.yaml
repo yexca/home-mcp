@@ -82,6 +82,13 @@ modules:
       - webp
     max_prompt_chars: 4000
     max_download_bytes: 10485760
+    max_edit_input_images: 4
+    max_edit_input_image_bytes: 10485760
+    max_edit_total_image_bytes: 20971520
+    allowed_edit_input_mime_types:
+      - image/png
+      - image/jpeg
+      - image/webp
     allow_http_image_urls: false
     ikun:
       base_url: ${IMAGE_API_BASE_URL}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import socket
+import uuid
 from dataclasses import dataclass
 from typing import Any
 from urllib import error, request
@@ -31,6 +32,13 @@ class ProviderImageResponse:
     raw_size: str | None = None
     raw_quality: str | None = None
     raw_output_format: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderEditImage:
+    filename: str
+    mime_type: str
+    data: bytes
 
 
 class IkunOpenAICompatibleProvider:
@@ -88,9 +96,44 @@ class IkunOpenAICompatibleProvider:
                 "Accept": "application/json",
             },
         )
+        return _decode_image_response(self._send(req))
+
+    def edit(
+        self,
+        *,
+        prompt: str,
+        images: list[ProviderEditImage],
+        n: int,
+        size: str,
+        quality: str,
+        output_format: str,
+    ) -> ProviderImageResponse:
+        fields: list[tuple[str, str]] = [
+            ("model", self.model),
+            ("prompt", prompt),
+            ("n", str(n)),
+            ("size", size),
+            ("quality", quality),
+            ("output_format", output_format),
+        ]
+        files = [("image[]", image.filename, image.mime_type, image.data) for image in images]
+        body, content_type = _encode_multipart(fields, files)
+        req = request.Request(
+            f"{self.base_url}/v1/images/edits",
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": content_type,
+                "Accept": "application/json",
+            },
+        )
+        return _decode_image_response(self._send(req))
+
+    def _send(self, req: request.Request) -> bytes:
         try:
             with self.opener(req, timeout=self.timeout_seconds) as response:
-                response_body = response.read()
+                return response.read()
         except error.HTTPError as exc:
             raise _map_http_error(exc) from exc
         except (TimeoutError, socket.timeout) as exc:
@@ -102,43 +145,6 @@ class IkunOpenAICompatibleProvider:
         except OSError as exc:
             raise GatewayError(PROVIDER_UNAVAILABLE, "image provider is unavailable", retryable=True) from exc
 
-        try:
-            decoded = json.loads(response_body.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise GatewayError(PROVIDER_UNAVAILABLE, "image provider returned non-json response", retryable=True) from exc
-
-        data = decoded.get("data")
-        if not isinstance(data, list) or not data:
-            raise GatewayError(PROVIDER_UNAVAILABLE, "image provider returned no image data", retryable=True)
-
-        outputs: list[ProviderImageOutput] = []
-        for item in data:
-            if not isinstance(item, dict):
-                raise GatewayError(PROVIDER_UNAVAILABLE, "image provider returned invalid image data", retryable=True)
-            if isinstance(item.get("url"), str) and item["url"]:
-                outputs.append(
-                    ProviderImageOutput(
-                        response_type="url",
-                        url=item["url"],
-                        revised_prompt=item.get("revised_prompt") if isinstance(item.get("revised_prompt"), str) else None,
-                    )
-                )
-            elif isinstance(item.get("b64_json"), str) and item["b64_json"]:
-                outputs.append(
-                    ProviderImageOutput(
-                        response_type="b64_json",
-                        b64_json=item["b64_json"],
-                        revised_prompt=item.get("revised_prompt") if isinstance(item.get("revised_prompt"), str) else None,
-                    )
-                )
-            else:
-                raise GatewayError(PROVIDER_UNAVAILABLE, "image provider returned unsupported image data", retryable=True)
-
-        return ProviderImageResponse(
-            outputs=outputs,
-            usage=decoded.get("usage") if isinstance(decoded.get("usage"), dict) else None,
-        )
-
 
 def _map_http_error(exc: error.HTTPError) -> GatewayError:
     if exc.code in {401, 403}:
@@ -148,3 +154,78 @@ def _map_http_error(exc: error.HTTPError) -> GatewayError:
     if exc.code >= 500:
         return GatewayError(PROVIDER_UNAVAILABLE, "image provider is unavailable", retryable=True)
     return GatewayError(PROVIDER_REJECTED, "image provider rejected the request", retryable=False)
+
+
+def _decode_image_response(response_body: bytes) -> ProviderImageResponse:
+    try:
+        decoded = json.loads(response_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise GatewayError(PROVIDER_UNAVAILABLE, "image provider returned non-json response", retryable=True) from exc
+
+    data = decoded.get("data")
+    if not isinstance(data, list) or not data:
+        raise GatewayError(PROVIDER_UNAVAILABLE, "image provider returned no image data", retryable=True)
+
+    outputs: list[ProviderImageOutput] = []
+    for item in data:
+        if not isinstance(item, dict):
+            raise GatewayError(PROVIDER_UNAVAILABLE, "image provider returned invalid image data", retryable=True)
+        if isinstance(item.get("url"), str) and item["url"]:
+            outputs.append(
+                ProviderImageOutput(
+                    response_type="url",
+                    url=item["url"],
+                    revised_prompt=item.get("revised_prompt") if isinstance(item.get("revised_prompt"), str) else None,
+                )
+            )
+        elif isinstance(item.get("b64_json"), str) and item["b64_json"]:
+            outputs.append(
+                ProviderImageOutput(
+                    response_type="b64_json",
+                    b64_json=item["b64_json"],
+                    revised_prompt=item.get("revised_prompt") if isinstance(item.get("revised_prompt"), str) else None,
+                )
+            )
+        else:
+            raise GatewayError(PROVIDER_UNAVAILABLE, "image provider returned unsupported image data", retryable=True)
+
+    return ProviderImageResponse(
+        outputs=outputs,
+        usage=decoded.get("usage") if isinstance(decoded.get("usage"), dict) else None,
+    )
+
+
+def _encode_multipart(
+    fields: list[tuple[str, str]],
+    files: list[tuple[str, str, str, bytes]],
+) -> tuple[bytes, str]:
+    boundary = f"----home-mcp-{uuid.uuid4().hex}"
+    chunks: list[bytes] = []
+    for name, value in fields:
+        chunks.extend(
+            [
+                f"--{boundary}\r\n".encode("ascii"),
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"),
+                value.encode("utf-8"),
+                b"\r\n",
+            ]
+        )
+    for name, filename, mime_type, data in files:
+        chunks.extend(
+            [
+                f"--{boundary}\r\n".encode("ascii"),
+                (
+                    f'Content-Disposition: form-data; name="{name}"; '
+                    f'filename="{_safe_filename(filename)}"\r\n'
+                ).encode("utf-8"),
+                f"Content-Type: {mime_type}\r\n\r\n".encode("ascii"),
+                data,
+                b"\r\n",
+            ]
+        )
+    chunks.append(f"--{boundary}--\r\n".encode("ascii"))
+    return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
+
+
+def _safe_filename(filename: str) -> str:
+    return filename.replace("\\", "_").replace("/", "_").replace('"', "_")

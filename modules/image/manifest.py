@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from app.config import Settings
-from modules.image.schemas import IMAGE_GENERATE_INPUT_SCHEMA, IMAGE_GENERATE_OUTPUT_SCHEMA
-from modules.image.service import image_generate
+from modules.image.schemas import (
+    IMAGE_EDIT_INPUT_SCHEMA,
+    IMAGE_EDIT_OUTPUT_SCHEMA,
+    IMAGE_GENERATE_INPUT_SCHEMA,
+    IMAGE_GENERATE_OUTPUT_SCHEMA,
+)
+from modules.image.service import image_edit, image_generate
 from tools.registry import ToolDefinition, ToolRegistry
 
 
@@ -19,6 +24,18 @@ def register_image_tools(registry: ToolRegistry, settings: Settings) -> None:
             output_schema=IMAGE_GENERATE_OUTPUT_SCHEMA,
             risk_level="medium",
             handler=image_generate,
+            creates_job=True,
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="image_edit",
+            title="Image Edit",
+            description="Edit one or more image artifacts with a text prompt and persist the result as an artifact.",
+            input_schema=IMAGE_EDIT_INPUT_SCHEMA,
+            output_schema=IMAGE_EDIT_OUTPUT_SCHEMA,
+            risk_level="medium",
+            handler=image_edit,
             creates_job=True,
         )
     )

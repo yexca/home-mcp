@@ -13,6 +13,25 @@ IMAGE_GENERATE_INPUT_SCHEMA = {
     "additionalProperties": False,
 }
 
+IMAGE_EDIT_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "prompt": {"type": "string", "minLength": 1, "maxLength": 4000},
+        "image_artifact_id": {"type": "string", "minLength": 1},
+        "image_artifact_ids": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "minItems": 1,
+        },
+        "size": {"type": "string"},
+        "quality": {"type": "string"},
+        "output_format": {"type": "string", "enum": ["png", "jpeg", "webp"]},
+        "n": {"type": "integer"},
+    },
+    "required": ["prompt"],
+    "additionalProperties": False,
+}
+
 IMAGE_ARTIFACT_OUTPUT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -39,3 +58,5 @@ IMAGE_GENERATE_OUTPUT_SCHEMA = {
         "provider_output": {"type": "object"},
     },
 }
+
+IMAGE_EDIT_OUTPUT_SCHEMA = IMAGE_GENERATE_OUTPUT_SCHEMA
