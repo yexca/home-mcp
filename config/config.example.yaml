@@ -26,6 +26,7 @@ limits:
   sync_tool_timeout_seconds: 120
   image_jobs_per_caller_per_day: 20
   tts_jobs_per_caller_per_day: 100
+  print_jobs_per_caller_per_day: 20
   max_image_jobs_global: 2
   max_image_jobs_per_caller: 1
   max_tts_jobs_global: 2
@@ -133,3 +134,25 @@ modules:
     max_text_chars: 4000
   printer:
     enabled: false
+    provider: bridge_http
+    allowed_printers: []
+    allowed_mime_types:
+      - application/pdf
+      - image/png
+      - image/jpeg
+    max_file_bytes: 10485760
+    max_copies: 2
+    default_duplex: none
+    duplex_modes:
+      - none
+      - long_edge
+      - short_edge
+    default_color: auto
+    color_modes:
+      - auto
+      - color
+      - monochrome
+    bridge_http:
+      url: ${PRINTER_BRIDGE_URL}
+      api_key: ${PRINTER_BRIDGE_API_KEY}
+      timeout_seconds: 30

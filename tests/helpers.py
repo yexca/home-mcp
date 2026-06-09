@@ -46,3 +46,16 @@ def fresh_phase4_gateway():
     settings.raw["artifacts"]["root"] = str(root)
     settings.raw["database"]["path"] = str(root / "metadata.sqlite3")
     return build_services(settings)
+
+
+def fresh_phase5_gateway():
+    os.environ["CONFIG_PATH"] = "env/phase5.test.config.yaml"
+    os.environ["GATEWAY_TOKEN_HOST"] = "test-host-token"
+    os.environ["GATEWAY_TOKEN_ROLE_DEFAULT"] = "test-role-token"
+    os.environ["PRINTER_BRIDGE_API_KEY"] = "test-printer-token"
+    settings = load_settings()
+    Path("tmp").mkdir(exist_ok=True)
+    root = Path(tempfile.mkdtemp(prefix="gateway-phase5-test-", dir="tmp"))
+    settings.raw["artifacts"]["root"] = str(root)
+    settings.raw["database"]["path"] = str(root / "metadata.sqlite3")
+    return build_services(settings)

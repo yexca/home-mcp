@@ -105,6 +105,7 @@ def _validate(data: dict[str, Any]) -> None:
     _validate_image_config(data.get("modules", {}).get("image", {}))
     _validate_tts_config(data.get("modules", {}).get("tts", {}))
     _validate_matrix_config(data.get("modules", {}).get("matrix", {}))
+    _validate_printer_config(data.get("modules", {}).get("printer", {}))
     Path(data["artifacts"]["root"]).mkdir(parents=True, exist_ok=True)
 
 
@@ -152,3 +153,29 @@ def _validate_matrix_config(matrix_config: dict[str, Any]) -> None:
         raise ValueError("modules.matrix.homeserver is required")
     if not matrix_config.get("access_token"):
         raise ValueError("modules.matrix.access_token is required")
+
+
+def _validate_printer_config(printer_config: dict[str, Any]) -> None:
+    if not printer_config or not bool(printer_config.get("enabled", False)):
+        return
+    provider = printer_config.get("provider", "bridge_http")
+    if provider != "bridge_http":
+        raise ValueError("modules.printer.provider must be bridge_http")
+    if not printer_config.get("bridge_http", {}).get("url"):
+        raise ValueError("modules.printer.bridge_http.url is required")
+    if not printer_config.get("allowed_printers"):
+        raise ValueError("modules.printer.allowed_printers is required")
+    allowed_mime_types = printer_config.get("allowed_mime_types") or []
+    if not allowed_mime_types:
+        raise ValueError("modules.printer.allowed_mime_types is required")
+    max_copies = int(printer_config.get("max_copies", 0))
+    if max_copies < 1:
+        raise ValueError("modules.printer.max_copies must be at least 1")
+    duplex_modes = printer_config.get("duplex_modes") or []
+    default_duplex = printer_config.get("default_duplex")
+    if not default_duplex or default_duplex not in duplex_modes:
+        raise ValueError("modules.printer.default_duplex must be in duplex_modes")
+    color_modes = printer_config.get("color_modes") or []
+    default_color = printer_config.get("default_color")
+    if not default_color or default_color not in color_modes:
+        raise ValueError("modules.printer.default_color must be in color_modes")

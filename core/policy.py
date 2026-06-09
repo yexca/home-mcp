@@ -79,6 +79,14 @@ class PolicyEngine:
             room_id = arguments.get("room_id")
             if not isinstance(room_id, str) or room_id not in allowed_rooms:
                 return PolicyDecision("deny", "matrix room is not allowlisted", ("matrix_room",))
+        if tool_name == "printer_print_file":
+            allowed_printers = set(
+                self.settings.policy.get("allowed_printers", [])
+                or self.settings.modules.get("printer", {}).get("allowed_printers", [])
+            )
+            printer_id = arguments.get("printer_id")
+            if not isinstance(printer_id, str) or printer_id not in allowed_printers:
+                return PolicyDecision("deny", "printer is not allowlisted", ("printer",))
         if tool_name == "health_check":
             return PolicyDecision("allow", "health checks are always allowed", ("health_check",))
         if caller.is_admin:

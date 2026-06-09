@@ -1,0 +1,71 @@
+server:
+  host: 127.0.0.1
+  port: 8787
+
+artifacts:
+  root: ./tmp/test-phase5-artifacts
+  public_base_url: http://127.0.0.1:8787/artifacts
+  max_artifact_bytes: 1048576
+
+database:
+  path: ./tmp/test-phase5-artifacts/metadata.sqlite3
+
+limits:
+  print_jobs_per_caller_per_day: 20
+
+callers:
+  host_assistant:
+    role: admin
+    token_env: GATEWAY_TOKEN_HOST
+    shared_artifact_read: true
+  role_default:
+    role: role_play
+    token_env: GATEWAY_TOKEN_ROLE_DEFAULT
+    shared_artifact_read: false
+
+policy:
+  default_allow: false
+  anonymous_allowed_tools:
+    - health_check
+  allowed_printers:
+    - office_pdf
+  printable_mime_types:
+    - application/pdf
+    - image/png
+    - image/jpeg
+  high_risk_allowed_callers:
+    role_default:
+      - printer_print_file
+
+modules:
+  image:
+    enabled: false
+  tts:
+    enabled: false
+  matrix:
+    enabled: false
+  printer:
+    enabled: true
+    provider: bridge_http
+    allowed_printers:
+      - office_pdf
+    allowed_mime_types:
+      - application/pdf
+      - image/png
+      - image/jpeg
+    max_file_bytes: 128
+    max_copies: 2
+    default_duplex: none
+    duplex_modes:
+      - none
+      - long_edge
+      - short_edge
+    default_color: auto
+    color_modes:
+      - auto
+      - color
+      - monochrome
+    bridge_http:
+      url: http://127.0.0.1:1
+      api_key: ${PRINTER_BRIDGE_API_KEY}
+      timeout_seconds: 2
