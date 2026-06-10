@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.artifacts import artifact_download_url
 from core.errors import GatewayError, INVALID_ARGUMENT, UNSUPPORTED_MEDIA_TYPE
 from modules.tts.providers.local_http import LocalHttpTTSProvider, MockTTSProvider
 from tools.result import success
@@ -75,7 +76,7 @@ class TTSSynthesisService:
         )
         return success(
             request_id=ctx.request_id,
-            artifact=artifact.to_metadata(ctx.config.artifacts.get("public_base_url")),
+            artifact=artifact.to_metadata(download_url=artifact_download_url(ctx.config, artifact, ctx.metadata)),
             provider_output={"type": "audio", "mime_type": response.mime_type},
         )
 

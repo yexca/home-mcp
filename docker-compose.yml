@@ -8,6 +8,8 @@ services:
     environment:
       GATEWAY_TOKEN_HOST: ${GATEWAY_TOKEN_HOST:-}
       GATEWAY_TOKEN_ROLE_DEFAULT: ${GATEWAY_TOKEN_ROLE_DEFAULT:-}
+      ARTIFACT_SIGNING_SECRET: ${ARTIFACT_SIGNING_SECRET:-}
+      ARTIFACT_PUBLIC_BASE_URL: ${ARTIFACT_PUBLIC_BASE_URL:-http://127.0.0.1:8787/artifacts}
       IMAGE_API_BASE_URL: ${IMAGE_API_BASE_URL:-}
       IMAGE_API_MODEL: ${IMAGE_API_MODEL:-}
       IMAGE_API_KEY: ${IMAGE_API_KEY:-}
@@ -34,3 +36,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+networks:
+  home-ai-net:
+    external: true

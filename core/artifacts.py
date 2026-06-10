@@ -1,20 +1,24 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import shutil
 import sqlite3
+import time
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, BinaryIO
+from urllib.parse import urlencode
 
 from app.config import Settings
 from core.errors import (
     ARTIFACT_FORBIDDEN,
     ARTIFACT_NOT_FOUND,
     GatewayError,
+    INTERNAL_ERROR,
     INVALID_ARGUMENT,
 )
 from core.ids import new_artifact_id
@@ -46,7 +50,7 @@ class Artifact:
     expires_at: str | None
     metadata: dict[str, Any]
 
-    def to_metadata(self, public_base_url: str | None = None) -> dict[str, Any]:
+    def to_metadata(self, public_base_url: str | None = None, *, download_url: str | None = None) -> dict[str, Any]:
         data = {
             "id": self.id,
             "kind": self.kind,
@@ -61,9 +65,62 @@ class Artifact:
             "expires_at": self.expires_at,
             "metadata": self.metadata,
         }
-        if public_base_url:
+        if download_url:
+            data["download_url"] = download_url
+        elif public_base_url:
             data["download_url"] = f"{public_base_url.rstrip('/')}/{self.id}"
         return data
+
+
+def artifact_public_base_url(settings: Settings, metadata: dict[str, Any] | None = None) -> str | None:
+    metadata = metadata or {}
+    request_base_url = metadata.get("request_base_url")
+    artifact_path = settings.server.get("artifact_path", "/artifacts")
+    if isinstance(request_base_url, str) and request_base_url:
+        return f"{request_base_url.rstrip('/')}/{str(artifact_path).strip('/')}"
+    configured = settings.artifacts.get("public_base_url")
+    return str(configured).strip() if configured else None
+
+
+def artifact_download_url(settings: Settings, artifact: Artifact, metadata: dict[str, Any] | None = None) -> str | None:
+    public_base_url = artifact_public_base_url(settings, metadata)
+    if not public_base_url:
+        return None
+    expires = int(time.time()) + int(settings.artifacts.get("signed_url_ttl_seconds", 300))
+    query = urlencode(
+        {
+            "expires": str(expires),
+            "signature": artifact_download_signature(settings, artifact.id, expires),
+        }
+    )
+    return f"{public_base_url.rstrip('/')}/{artifact.id}?{query}"
+
+
+def artifact_download_signature(settings: Settings, artifact_id: str, expires: int) -> str:
+    secret = _artifact_signing_secret(settings)
+    message = f"{artifact_id}:{expires}".encode("utf-8")
+    return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+
+
+def artifact_download_signature_valid(settings: Settings, artifact_id: str, expires: str, signature: str) -> bool:
+    try:
+        expires_at = int(expires)
+    except (TypeError, ValueError):
+        return False
+    if expires_at < int(time.time()):
+        return False
+    expected = artifact_download_signature(settings, artifact_id, expires_at)
+    return hmac.compare_digest(signature, expected)
+
+
+def _artifact_signing_secret(settings: Settings) -> str:
+    env_name = str(settings.artifacts.get("signed_url_secret_env", "ARTIFACT_SIGNING_SECRET")).strip()
+    secret = os.getenv(env_name, "") if env_name else ""
+    if not secret:
+        secret = os.getenv("GATEWAY_TOKEN_HOST", "")
+    if not secret:
+        raise GatewayError(INTERNAL_ERROR, "artifact signing secret is not configured", retryable=False)
+    return secret
 
 
 class ArtifactStore:
@@ -170,6 +227,17 @@ class ArtifactStore:
             raise GatewayError(ARTIFACT_FORBIDDEN, "artifact expired")
         if not self.can_read(artifact, caller):
             raise GatewayError(ARTIFACT_FORBIDDEN, "artifact access denied")
+        return artifact
+
+    def get_with_download_signature(self, artifact_id: str, expires: str, signature: str) -> Artifact:
+        row = self.conn.execute("SELECT * FROM artifacts WHERE id = ? AND deleted_at IS NULL", (artifact_id,)).fetchone()
+        if not row:
+            raise GatewayError(ARTIFACT_NOT_FOUND, "artifact not found")
+        artifact = self._from_row(row)
+        if self._is_expired(artifact):
+            raise GatewayError(ARTIFACT_FORBIDDEN, "artifact expired")
+        if not artifact_download_signature_valid(self.settings, artifact.id, expires, signature):
+            raise GatewayError(ARTIFACT_FORBIDDEN, "artifact download signature is invalid or expired")
         return artifact
 
     def open_stream(self, artifact_id: str, caller: CallerIdentity) -> BinaryIO:

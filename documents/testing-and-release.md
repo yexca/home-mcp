@@ -78,7 +78,10 @@ Image:
 - Verify the response contains `status: accepted` and `job_id`.
 - Poll `job_status` until the job reaches `succeeded`.
 - Verify the final job contains image artifact IDs.
-- Call `artifact_get` for the artifact and verify `sha256` and `download_url`.
+- Call `artifact_get` for the artifact and verify `sha256` and signed
+  `download_url`.
+- Download the signed `download_url` without Bearer auth and verify the MIME
+  type.
 
 TTS:
 

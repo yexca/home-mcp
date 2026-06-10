@@ -112,7 +112,8 @@ deferred_loading = true
 Built-in tools:
 
 - `health_check`: returns server and enabled-module status.
-- `artifact_get`: returns artifact metadata and a download URL when access is allowed.
+- `artifact_get`: returns artifact metadata and inline MCP image content for readable image artifacts.
+- `artifact_get_image`: compatibility helper that requires an inline-readable image artifact.
 - `job_status`: returns a job visible to the caller.
 
 Optional module tools:
@@ -154,6 +155,15 @@ docker compose up --build
 
 Compose automatically reads `.env`, mounts `config/config.yaml`, and stores
 artifacts plus SQLite metadata under `./artifacts`.
+
+When ZeroClaw also runs in Docker, artifact `download_url` values must point to
+an address reachable from the ZeroClaw container. The gateway derives download
+URLs from the address used to call MCP when possible, so a ZeroClaw MCP URL of
+`http://192.168.1.23:8787/mcp` yields artifact URLs under
+`http://192.168.1.23:8787/artifacts`. `ARTIFACT_PUBLIC_BASE_URL` remains the
+fallback and defaults to `http://127.0.0.1:8787/artifacts` for host-local use.
+Artifact `download_url` values are short-lived signed URLs, so clients can fetch
+them directly without knowing the MCP Bearer token.
 
 ## Tests
 

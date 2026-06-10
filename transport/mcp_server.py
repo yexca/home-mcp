@@ -55,7 +55,7 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
             return
         artifact_prefix = self.server.services.config.server.get("artifact_path", "/artifacts").rstrip("/") + "/"
         if parsed.path.startswith(artifact_prefix):
-            serve_artifact(self, self.server.services, parsed.path[len(artifact_prefix):])
+            serve_artifact(self, self.server.services, parsed.path[len(artifact_prefix):], parsed.query)
             return
         self._json({"ok": False, "error": "not found"}, status=HTTPStatus.NOT_FOUND)
 
@@ -85,7 +85,7 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
                     tool_name,
                     arguments,
                     authorization=self.headers.get("Authorization"),
-                    metadata=metadata,
+                    metadata=self._with_request_metadata(metadata),
                     remote_addr=self.client_address[0],
                 )
             )
@@ -188,11 +188,21 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
                 str(params.get("name", "")),
                 params.get("arguments", {}) or {},
                 authorization=self.headers.get("Authorization"),
-                metadata=payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {},
+                metadata=self._with_request_metadata(
+                    payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {}
+                ),
                 remote_addr=self.client_address[0],
             )
             return _jsonrpc_result(request_id, _mcp_tool_result(result))
         return _jsonrpc_error(request_id, -32601, f"unsupported method: {method}")
+
+    def _with_request_metadata(self, metadata: dict[str, Any]) -> dict[str, Any]:
+        merged = dict(metadata)
+        host = self.headers.get("X-Forwarded-Host") or self.headers.get("Host")
+        if host:
+            proto = self.headers.get("X-Forwarded-Proto") or "http"
+            merged["request_base_url"] = f"{proto}://{host}"
+        return merged
 
 
 def _parse_mcp_payload(payload: dict[str, Any]) -> tuple[str, dict[str, Any], dict[str, Any]]:
@@ -223,8 +233,15 @@ def _mcp_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _mcp_tool_result(result: dict[str, Any]) -> dict[str, Any]:
+    text_payload = {key: value for key, value in result.items() if key != "_mcp_content"}
+    content: list[dict[str, Any]] = [{"type": "text", "text": json.dumps(text_payload, ensure_ascii=True, sort_keys=True)}]
+    for item in result.get("_mcp_content") or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "image" and isinstance(item.get("data"), str) and isinstance(item.get("mimeType"), str):
+            content.append({"type": "image", "data": item["data"], "mimeType": item["mimeType"]})
     return {
-        "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=True, sort_keys=True)}],
+        "content": content,
         "isError": not bool(result.get("ok", False)),
     }
 

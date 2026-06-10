@@ -94,7 +94,7 @@ class PolicyEngine:
             return PolicyDecision("allow", "admin caller", ("admin",))
         if tool_name == "artifact_upload_image":
             return PolicyDecision("allow", "caller owns created artifacts", ("artifact_owner",))
-        if tool_name in {"job_status", "artifact_get"}:
+        if tool_name in {"job_status", "artifact_get", "artifact_get_image"}:
             return PolicyDecision("allow", "ownership is checked by the backing store", ("own_or_grant",))
         if risk_level == "high":
             allowed_high_risk = self.settings.policy.get("high_risk_allowed_callers", {})

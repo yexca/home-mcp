@@ -15,6 +15,18 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings.artifacts["root"], "./tmp/test-artifacts")
         self.assertIn("host_assistant", settings.callers)
 
+    def test_artifact_public_base_url_can_be_overridden_by_env(self) -> None:
+        previous = os.environ.get("ARTIFACT_PUBLIC_BASE_URL")
+        try:
+            os.environ["ARTIFACT_PUBLIC_BASE_URL"] = "http://home-mcp:8787/artifacts"
+            settings = load_settings("env/test.config.yaml")
+            self.assertEqual(settings.artifacts["public_base_url"], "http://home-mcp:8787/artifacts")
+        finally:
+            if previous is None:
+                os.environ.pop("ARTIFACT_PUBLIC_BASE_URL", None)
+            else:
+                os.environ["ARTIFACT_PUBLIC_BASE_URL"] = previous
+
     def test_auto_loads_config_yaml_when_config_path_is_not_set(self) -> None:
         old_cwd = Path.cwd()
         old_config_path = os.environ.pop("CONFIG_PATH", None)

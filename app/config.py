@@ -64,6 +64,7 @@ def load_settings(config_path: str | None = None) -> Settings:
     if override_path:
         data = _deep_merge(data, _load_yaml(Path(override_path)))
     data = _substitute_env(data)
+    _apply_env_overrides(data)
     _validate(data)
     return Settings(data)
 
@@ -122,6 +123,12 @@ def _substitute_env(value: Any) -> Any:
     return value
 
 
+def _apply_env_overrides(data: dict[str, Any]) -> None:
+    artifact_public_base_url = os.getenv("ARTIFACT_PUBLIC_BASE_URL", "").strip()
+    if artifact_public_base_url:
+        data.setdefault("artifacts", {})["public_base_url"] = artifact_public_base_url
+
+
 def _validate(data: dict[str, Any]) -> None:
     for section in ("server", "artifacts", "database", "limits"):
         if section not in data:
@@ -130,6 +137,8 @@ def _validate(data: dict[str, Any]) -> None:
         raise ValueError("artifacts.root is required")
     if not data["database"].get("path"):
         raise ValueError("database.path is required")
+    if int(data["artifacts"].get("signed_url_ttl_seconds", 300)) <= 0:
+        raise ValueError("artifacts.signed_url_ttl_seconds must be greater than 0")
     _validate_image_config(data.get("modules", {}).get("image", {}))
     _validate_tts_config(data.get("modules", {}).get("tts", {}))
     _validate_matrix_config(data.get("modules", {}).get("matrix", {}))

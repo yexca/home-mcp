@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import threading
 import unittest
 from http.client import HTTPConnection
+from urllib.parse import parse_qs, urlparse
 
 from core.errors import POLICY_DENIED
 from tests.helpers import fresh_gateway
@@ -30,6 +32,7 @@ class McpTransportTests(unittest.TestCase):
         )
         arguments_by_tool = {
             "artifact_get": {"artifact_id": artifact.id},
+            "artifact_get_image": {"artifact_id": artifact.id},
             "artifact_upload_image": {
                 "filename": "input.png",
                 "mime_type": "image/png",
@@ -99,6 +102,174 @@ class McpTransportTests(unittest.TestCase):
             if response is not None:
                 response.close()
             stream.close()
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=5)
+
+    def test_artifact_download_url_uses_request_host(self) -> None:
+        services, registry, dispatcher = fresh_gateway()
+        artifact = services.artifacts.create_from_bytes(
+            kind="image",
+            mime_type="image/png",
+            extension="png",
+            data=b"image",
+            owner="role_default",
+            source_tool="test",
+        )
+        httpd = GatewayHTTPServer(
+            ("127.0.0.1", 0),
+            GatewayRequestHandler,
+            services=services,
+            registry=registry,
+            dispatcher=dispatcher,
+        )
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        host, port = httpd.server_address
+        conn = HTTPConnection(host, port, timeout=5)
+        try:
+            conn.request(
+                "POST",
+                "/mcp",
+                body=json.dumps({"tool": "artifact_get", "arguments": {"artifact_id": artifact.id}}),
+                headers={
+                    "Authorization": "Bearer test-role-token",
+                    "Content-Type": "application/json",
+                    "Host": "zeroclaw.test:8787",
+                },
+            )
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            payload = json.loads(response.read().decode("utf-8"))
+            self.assertTrue(payload["ok"])
+            parsed_download = urlparse(payload["artifact"]["download_url"])
+            self.assertEqual(
+                f"{parsed_download.scheme}://{parsed_download.netloc}{parsed_download.path}",
+                f"http://zeroclaw.test:8787/artifacts/{artifact.id}",
+            )
+            query = parse_qs(parsed_download.query)
+            self.assertIn("expires", query)
+            self.assertIn("signature", query)
+        finally:
+            conn.close()
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=5)
+
+    def test_signed_artifact_download_url_allows_get_without_bearer(self) -> None:
+        services, registry, dispatcher = fresh_gateway()
+        image_bytes = b"\x89PNG\r\n\x1a\nsigned-download"
+        artifact = services.artifacts.create_from_bytes(
+            kind="image",
+            mime_type="image/png",
+            extension="png",
+            data=image_bytes,
+            owner="role_default",
+            source_tool="test",
+        )
+        httpd = GatewayHTTPServer(
+            ("127.0.0.1", 0),
+            GatewayRequestHandler,
+            services=services,
+            registry=registry,
+            dispatcher=dispatcher,
+        )
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        host, port = httpd.server_address
+        conn = HTTPConnection(host, port, timeout=5)
+        try:
+            conn.request(
+                "POST",
+                "/mcp",
+                body=json.dumps({"tool": "artifact_get", "arguments": {"artifact_id": artifact.id}}),
+                headers={
+                    "Authorization": "Bearer test-role-token",
+                    "Content-Type": "application/json",
+                    "Host": f"{host}:{port}",
+                },
+            )
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            payload = json.loads(response.read().decode("utf-8"))
+            download = urlparse(payload["artifact"]["download_url"])
+
+            unauthenticated = HTTPConnection(host, port, timeout=5)
+            unauthenticated.request("GET", f"{download.path}?{download.query}")
+            download_response = unauthenticated.getresponse()
+            self.assertEqual(download_response.status, 200)
+            self.assertEqual(download_response.getheader("Content-Type"), "image/png")
+            self.assertEqual(download_response.read(), image_bytes)
+            unauthenticated.close()
+
+            tampered = parse_qs(download.query)
+            bad_query = f"expires={tampered['expires'][0]}&signature=bad"
+            rejected = HTTPConnection(host, port, timeout=5)
+            rejected.request("GET", f"{download.path}?{bad_query}")
+            rejected_response = rejected.getresponse()
+            self.assertEqual(rejected_response.status, 403)
+            rejected_response.read()
+            rejected.close()
+        finally:
+            conn.close()
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=5)
+
+    def test_artifact_get_returns_mcp_image_content(self) -> None:
+        services, registry, dispatcher = fresh_gateway()
+        image_bytes = b"\x89PNG\r\n\x1a\ninline-image"
+        artifact = services.artifacts.create_from_bytes(
+            kind="image",
+            mime_type="image/png",
+            extension="png",
+            data=image_bytes,
+            owner="role_default",
+            source_tool="test",
+        )
+        httpd = GatewayHTTPServer(
+            ("127.0.0.1", 0),
+            GatewayRequestHandler,
+            services=services,
+            registry=registry,
+            dispatcher=dispatcher,
+        )
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        host, port = httpd.server_address
+        conn = HTTPConnection(host, port, timeout=5)
+        try:
+            conn.request(
+                "POST",
+                "/mcp",
+                body=json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 3,
+                        "method": "tools/call",
+                        "params": {"name": "artifact_get", "arguments": {"artifact_id": artifact.id}},
+                    }
+                ),
+                headers={
+                    "Authorization": "Bearer test-role-token",
+                    "Content-Type": "application/json",
+                    "Host": "zeroclaw.test:8787",
+                },
+            )
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            payload = json.loads(response.read().decode("utf-8"))
+            content = payload["result"]["content"]
+            self.assertEqual(content[0]["type"], "text")
+            text_payload = json.loads(content[0]["text"])
+            self.assertTrue(text_payload["ok"])
+            self.assertEqual(text_payload["artifact"]["id"], artifact.id)
+            self.assertNotIn("_mcp_content", text_payload)
+            self.assertEqual(content[1]["type"], "image")
+            self.assertEqual(content[1]["mimeType"], "image/png")
+            self.assertEqual(base64.b64decode(content[1]["data"]), image_bytes)
+        finally:
+            conn.close()
             httpd.shutdown()
             httpd.server_close()
             thread.join(timeout=5)

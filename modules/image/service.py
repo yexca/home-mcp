@@ -10,6 +10,7 @@ from typing import Any
 from urllib import error, request
 from urllib.parse import urlparse
 
+from core.artifacts import artifact_download_url
 from core.errors import GatewayError, INVALID_ARGUMENT, PROVIDER_TIMEOUT, PROVIDER_UNAVAILABLE, UNSUPPORTED_MEDIA_TYPE
 from modules.image.providers import ImageProvider, create_image_provider
 from modules.image.providers.ikun_openai_compatible import (
@@ -243,7 +244,7 @@ def _persist_image_outputs(
             source_job_id=ctx.job_id,
             metadata=metadata,
         )
-        artifacts.append(artifact.to_metadata(ctx.config.artifacts.get("public_base_url")))
+        artifacts.append(artifact.to_metadata(download_url=artifact_download_url(ctx.config, artifact, ctx.metadata)))
         response_types.append(item.response_type)
 
     return success(

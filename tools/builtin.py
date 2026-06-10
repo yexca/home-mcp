@@ -4,6 +4,7 @@ import base64
 import binascii
 from typing import Any
 
+from core.artifacts import artifact_download_url
 from core.errors import GatewayError, INVALID_ARGUMENT, UNSUPPORTED_MEDIA_TYPE
 from tools.registry import ToolDefinition, ToolRegistry
 from tools.result import success
@@ -15,6 +16,8 @@ IMAGE_UPLOAD_EXTENSIONS = {
     "image/webp": "webp",
 }
 
+MCP_IMAGE_MIME_TYPES = set(IMAGE_UPLOAD_EXTENSIONS)
+
 ARTIFACT_UPLOAD_IMAGE_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -23,6 +26,13 @@ ARTIFACT_UPLOAD_IMAGE_INPUT_SCHEMA = {
         "b64_data": {"type": "string", "minLength": 1},
     },
     "required": ["filename", "mime_type", "b64_data"],
+    "additionalProperties": False,
+}
+
+ARTIFACT_ID_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {"artifact_id": {"type": "string", "minLength": 5}},
+    "required": ["artifact_id"],
     "additionalProperties": False,
 }
 
@@ -38,10 +48,45 @@ async def health_check(arguments: dict[str, Any], ctx: RequestContext) -> dict[s
 
 async def artifact_get(arguments: dict[str, Any], ctx: RequestContext) -> dict[str, Any]:
     artifact = ctx.artifacts.get(arguments["artifact_id"], ctx.caller)
+    mcp_content = _mcp_image_content(artifact, ctx, strict=False)
+    payload: dict[str, Any] = {
+        "artifact": artifact.to_metadata(download_url=artifact_download_url(ctx.config, artifact, ctx.metadata)),
+    }
+    if mcp_content:
+        payload["_mcp_content"] = mcp_content
     return success(
         request_id=ctx.request_id,
-        artifact=artifact.to_metadata(ctx.config.artifacts.get("public_base_url")),
+        **payload,
     )
+
+
+async def artifact_get_image(arguments: dict[str, Any], ctx: RequestContext) -> dict[str, Any]:
+    artifact = ctx.artifacts.get(arguments["artifact_id"], ctx.caller)
+    return success(
+        request_id=ctx.request_id,
+        artifact=artifact.to_metadata(download_url=artifact_download_url(ctx.config, artifact, ctx.metadata)),
+        _mcp_content=_mcp_image_content(artifact, ctx, strict=True),
+    )
+
+
+def _mcp_image_content(artifact: Any, ctx: RequestContext, *, strict: bool) -> list[dict[str, str]]:
+    if artifact.mime_type not in MCP_IMAGE_MIME_TYPES:
+        if not strict:
+            return []
+        raise GatewayError(UNSUPPORTED_MEDIA_TYPE, "artifact is not an MCP image type", retryable=False)
+    max_inline_bytes = int(ctx.config.artifacts.get("max_inline_artifact_bytes", 5 * 1024 * 1024))
+    if artifact.size_bytes > max_inline_bytes:
+        if not strict:
+            return []
+        raise GatewayError(INVALID_ARGUMENT, "artifact exceeds max inline size", retryable=False)
+    data = ctx.artifacts.safe_path(artifact).read_bytes()
+    return [
+        {
+            "type": "image",
+            "mimeType": artifact.mime_type,
+            "data": base64.b64encode(data).decode("ascii"),
+        }
+    ]
 
 
 async def artifact_upload_image(arguments: dict[str, Any], ctx: RequestContext) -> dict[str, Any]:
@@ -79,7 +124,7 @@ async def artifact_upload_image(arguments: dict[str, Any], ctx: RequestContext) 
     )
     return success(
         request_id=ctx.request_id,
-        artifact=artifact.to_metadata(ctx.config.artifacts.get("public_base_url")),
+        artifact=artifact.to_metadata(download_url=artifact_download_url(ctx.config, artifact, ctx.metadata)),
     )
 
 
@@ -109,16 +154,23 @@ def register_builtin_tools(registry: ToolRegistry) -> None:
         ToolDefinition(
             name="artifact_get",
             title="Artifact Get",
-            description="Return artifact metadata and a download URL when caller may read it.",
-            input_schema={
-                "type": "object",
-                "properties": {"artifact_id": {"type": "string", "minLength": 5}},
-                "required": ["artifact_id"],
-                "additionalProperties": False,
-            },
+            description="Return artifact metadata and inline MCP image content for readable image artifacts.",
+            input_schema=ARTIFACT_ID_INPUT_SCHEMA,
             output_schema=None,
             risk_level="low",
             handler=artifact_get,
+            creates_job=False,
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="artifact_get_image",
+            title="Artifact Get Image",
+            description="Compatibility alias that requires readable image artifact metadata and inline MCP image content.",
+            input_schema=ARTIFACT_ID_INPUT_SCHEMA,
+            output_schema=None,
+            risk_level="low",
+            handler=artifact_get_image,
             creates_job=False,
         )
     )

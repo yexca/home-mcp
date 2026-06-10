@@ -2,17 +2,24 @@ from __future__ import annotations
 
 import json
 from http import HTTPStatus
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote
 
 from core.errors import GatewayError
 from transport.request_context import CoreServices
 
 
-def serve_artifact(handler, services: CoreServices, artifact_id: str) -> None:
+def serve_artifact(handler, services: CoreServices, artifact_id: str, query: str = "") -> None:
     authorization = handler.headers.get("Authorization")
-    caller = services.policy.resolve_caller(authorization, remote_addr=handler.client_address[0])
     try:
-        artifact = services.artifacts.get(unquote(artifact_id), caller)
+        artifact_id = unquote(artifact_id)
+        if authorization:
+            caller = services.policy.resolve_caller(authorization, remote_addr=handler.client_address[0])
+            artifact = services.artifacts.get(artifact_id, caller)
+        else:
+            params = parse_qs(query)
+            expires = (params.get("expires") or [""])[0]
+            signature = (params.get("signature") or [""])[0]
+            artifact = services.artifacts.get_with_download_signature(artifact_id, expires, signature)
         path = services.artifacts.safe_path(artifact)
         handler.send_response(HTTPStatus.OK)
         handler.send_header("Content-Type", artifact.mime_type)

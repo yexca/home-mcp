@@ -9,6 +9,8 @@ server:
 artifacts:
   root: ./artifacts
   public_base_url: http://127.0.0.1:8787/artifacts
+  signed_url_secret_env: ARTIFACT_SIGNING_SECRET
+  signed_url_ttl_seconds: 300
   retention_days:
     image: 30
     audio: 30
@@ -16,6 +18,7 @@ artifacts:
     print: 7
     temp: 1
   max_artifact_bytes: 52428800
+  max_inline_artifact_bytes: 5242880
 
 database:
   path: ./artifacts/metadata.sqlite3

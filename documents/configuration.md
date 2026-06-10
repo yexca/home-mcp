@@ -70,7 +70,10 @@ reachable through the published Docker port. Local clients can still connect to
 artifacts:
   root: ./artifacts
   public_base_url: http://127.0.0.1:8787/artifacts
+  signed_url_secret_env: ARTIFACT_SIGNING_SECRET
+  signed_url_ttl_seconds: 300
   max_artifact_bytes: 52428800
+  max_inline_artifact_bytes: 5242880
 
 database:
   path: ./artifacts/metadata.sqlite3
@@ -78,11 +81,36 @@ database:
   busy_timeout_ms: 5000
 ```
 
-`public_base_url` is used to build artifact `download_url` values. It should
-match the address clients can reach.
+Artifact `download_url` values are derived from the incoming HTTP request Host
+header when available. For example, a caller using
+`http://127.0.0.1:8787/mcp` receives `http://127.0.0.1:8787/artifacts/...`,
+while a caller using `http://192.168.1.23:8787/mcp` receives
+`http://192.168.1.23:8787/artifacts/...`.
+
+`public_base_url` is the fallback used when no request-derived base URL is
+available. `ARTIFACT_PUBLIC_BASE_URL` can override this fallback at runtime
+without editing YAML. Docker Compose passes this environment variable to the
+container and defaults it to `http://127.0.0.1:8787/artifacts`, matching local
+host use. For mixed host/container access, set it in `.env` to one unified
+address that both sides can fetch, such as the Docker host LAN IP:
+
+```dotenv
+ARTIFACT_PUBLIC_BASE_URL=http://192.168.1.23:8787/artifacts
+```
+
+`artifact.download_url` values are short-lived signed URLs in the form
+`/artifacts/{artifact_id}?expires=...&signature=...`. MCP calls still use
+Bearer-token authentication, but artifact downloads can be fetched directly by
+clients that only know the signed URL. Set `ARTIFACT_SIGNING_SECRET` to a strong
+random value and keep `artifacts.signed_url_ttl_seconds` short enough for your
+ZeroClaw workflow. If `ARTIFACT_SIGNING_SECRET` is not set, the gateway falls
+back to `GATEWAY_TOKEN_HOST` for compatibility.
 
 `artifacts.max_artifact_bytes` applies to generated artifacts and caller
 uploads, including images imported through `artifact_upload_image`.
+`artifacts.max_inline_artifact_bytes` limits image bytes returned inline through
+`artifact_get`; inline content is base64-encoded in the MCP response and
+therefore grows by roughly one third over the raw file size.
 
 Retention is configured by artifact kind:
 

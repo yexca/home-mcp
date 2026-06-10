@@ -79,8 +79,31 @@ Input:
 }
 ```
 
-Output includes artifact metadata and `download_url` when the caller may read
-the artifact.
+Output includes artifact metadata and a short-lived signed `download_url` when
+the caller may read the artifact. The signed URL can be fetched with a direct
+GET and does not require the MCP Bearer token. For MCP JSON-RPC clients,
+readable image artifacts also include an additional `type: image` content item
+containing base64 image bytes when the artifact is `image/png`, `image/jpeg`, or
+`image/webp`, and its raw size does not exceed
+`artifacts.max_inline_artifact_bytes`.
+
+### `artifact_get_image`
+
+Risk: `low`
+
+Input:
+
+```json
+{
+  "artifact_id": "art_..."
+}
+```
+
+Compatibility helper for clients that want a strict image-only fetch. It returns
+readable image artifact metadata and, for MCP JSON-RPC clients, an additional
+`type: image` content item containing base64 image bytes. Prefer `artifact_get`
+for new clients. The artifact must be `image/png`, `image/jpeg`, or `image/webp`,
+and its raw size must not exceed `artifacts.max_inline_artifact_bytes`.
 
 ### `artifact_upload_image`
 

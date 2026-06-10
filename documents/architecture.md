@@ -73,8 +73,10 @@ The gateway supports three call shapes:
   - `POST /mcp` with `{"method":"tools/list"}`.
   - `POST /mcp` with `{"tool":"health_check","arguments":{}}`.
 
-Artifact files are served by `GET /artifacts/{artifact_id}` after the same
-artifact ownership/grant checks used by `artifact_get`.
+Artifact files are served by `GET /artifacts/{artifact_id}`. Requests with a
+Bearer token use the same ownership/grant checks as `artifact_get`; requests
+without Bearer must include a valid short-lived `expires` and `signature` query
+pair from artifact metadata.
 
 ## Storage Model
 
