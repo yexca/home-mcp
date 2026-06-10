@@ -59,12 +59,17 @@ class Settings:
 def load_settings(config_path: str | None = None) -> Settings:
     base_path = Path("config/config.example.yaml")
     data = _load_yaml(base_path)
-    override_path = config_path or os.getenv("CONFIG_PATH")
+    override_path = config_path or os.getenv("CONFIG_PATH") or _default_user_config_path()
     if override_path:
         data = _deep_merge(data, _load_yaml(Path(override_path)))
     data = _substitute_env(data)
     _validate(data)
     return Settings(data)
+
+
+def _default_user_config_path() -> str | None:
+    path = Path("config/user.config.yaml")
+    return str(path) if path.is_file() else None
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:

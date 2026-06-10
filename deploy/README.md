@@ -5,6 +5,8 @@
 Start the Gateway:
 
 ```powershell
+Copy-Item .env.example .env
+# Edit .env and set GATEWAY_TOKEN_HOST / GATEWAY_TOKEN_ROLE_DEFAULT.
 docker compose up --build
 ```
 
@@ -31,6 +33,8 @@ deferred_loading = true
 ## Configuration
 
 - Compose mounts `env/compose.config.yaml` into the container.
+- Compose reads local values from the project-root `.env`, created from
+  `.env.example`.
 - Artifacts and SQLite metadata live in the `home-mcp-artifacts` volume under `/data/artifacts`.
 - Secrets are supplied only through environment variables, never through checked-in YAML.
 - Keep high-risk tools out of ZeroClaw auto approve by default.
