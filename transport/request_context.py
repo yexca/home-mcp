@@ -41,4 +41,6 @@ class RequestContext:
     audit: AuditLogger
     limits: InMemoryRateLimiter
     job_id: str | None = None
+    audit_id: str | None = None
+    policy_decision: str | None = None
     metadata: dict[str, Any] | None = None

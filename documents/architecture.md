@@ -22,11 +22,14 @@ keeps external provider details behind module adapters.
 3. `CoreServices` is assembled with artifact, job, policy, audit, and rate-limit services.
 4. Built-in tools are registered through `tools.builtin.register_builtin_tools()`.
 5. Enabled module manifests are discovered by `modules.loader.register_configured_module_tools()`.
-6. `transport.mcp_server.create_http_server()` creates a `ThreadingHTTPServer`.
+6. Enabled module startup hooks are run through `modules.loader.run_configured_module_startup_hooks()`.
+7. `transport.mcp_server.create_http_server()` creates a `ThreadingHTTPServer`.
 
 The module loader discovers packages under `modules/`, then imports
-`modules.<name>.manifest` for each enabled module. This keeps application
-startup independent from individual module implementations.
+`modules.<name>.manifest` for each enabled module. A manifest may also expose an
+optional startup hook for module-owned maintenance such as stale job
+reconciliation. This keeps application startup independent from individual
+module implementations.
 
 ## Request Flow
 
@@ -43,6 +46,13 @@ For tool calls, transport parsing ends in `ToolDispatcher.dispatch()`:
 9. Extract artifact IDs from the result.
 10. Mark the job and audit event as succeeded or failed.
 11. Return a stable success or failure dictionary.
+
+Tools may declare a module-owned background handler. In that case the
+dispatcher still owns validation, caller resolution, policy, job creation,
+audit creation, and failure shaping. After policy passes it calls the
+background handler, which should schedule worker-owned execution and return an
+`accepted` response quickly. The worker later marks the job and audit event as
+succeeded or failed, and callers use `job_status` to observe completion.
 
 Unhandled exceptions are converted to `INTERNAL_ERROR`; stack traces are not
 returned to MCP clients.

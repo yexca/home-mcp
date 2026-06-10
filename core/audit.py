@@ -7,7 +7,7 @@ from typing import Any
 
 from app.config import Settings
 from core.ids import new_audit_id
-from core.time import utc_now_iso
+from core.time import parse_iso, utc_now, utc_now_iso
 
 SENSITIVE_KEYS = {
     "authorization",
@@ -73,8 +73,8 @@ class AuditLogger:
         error_code: str | None = None,
         error_message: str | None = None,
     ) -> None:
-        started = self._started_perf.pop(audit_id, perf_counter())
-        duration_ms = int((perf_counter() - started) * 1000)
+        started = self._started_perf.pop(audit_id, None)
+        duration_ms = self._duration_ms(audit_id, started)
         with self.conn:
             self.conn.execute(
                 """
@@ -95,9 +95,48 @@ class AuditLogger:
                 ),
             )
 
+    def fail_started_for_jobs(self, *, job_ids: list[str], error_code: str, error_message: str) -> None:
+        if not job_ids:
+            return
+        now = utc_now()
+        with self.conn:
+            for job_id in job_ids:
+                rows = self.conn.execute(
+                    "SELECT id, started_at FROM audit_events WHERE job_id = ? AND status = 'started'",
+                    (job_id,),
+                ).fetchall()
+                for row in rows:
+                    started_at = parse_iso(row["started_at"])
+                    duration_ms = int((now - started_at).total_seconds() * 1000) if started_at else 0
+                    self.conn.execute(
+                        """
+                        UPDATE audit_events
+                        SET policy_decision = COALESCE(policy_decision, 'allow'),
+                            status = 'failed', error_code = ?, error_message = ?,
+                            finished_at = ?, duration_ms = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            error_code,
+                            error_message,
+                            now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+                            max(0, duration_ms),
+                            row["id"],
+                        ),
+                    )
+
     def summarize_input(self, arguments: dict[str, Any]) -> dict[str, Any]:
         limit = int(self.settings.audit.get("prompt_summary_chars", 200))
         return _summarize(arguments, limit)
+
+    def _duration_ms(self, audit_id: str, started_perf: float | None) -> int:
+        if started_perf is not None:
+            return int((perf_counter() - started_perf) * 1000)
+        row = self.conn.execute("SELECT started_at FROM audit_events WHERE id = ?", (audit_id,)).fetchone()
+        started_at = parse_iso(row["started_at"]) if row else None
+        if not started_at:
+            return 0
+        return max(0, int((utc_now() - started_at).total_seconds() * 1000))
 
 
 def _summarize(value: Any, text_limit: int) -> Any:

@@ -153,6 +153,10 @@ def _validate_image_config(image_config: dict[str, Any]) -> None:
     default_size = image_config.get("default_size")
     if not default_size or default_size not in allowed_sizes:
         raise ValueError("modules.image.default_size must be in allowed_sizes")
+    if float(image_config.get("total_timeout_seconds", 600)) <= 0:
+        raise ValueError("modules.image.total_timeout_seconds must be greater than 0")
+    if float(image_config.get("stale_job_grace_seconds", 30)) < 0:
+        raise ValueError("modules.image.stale_job_grace_seconds must be at least 0")
 
 
 def _validate_tts_config(tts_config: dict[str, Any]) -> None:

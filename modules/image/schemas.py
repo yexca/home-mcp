@@ -53,6 +53,7 @@ IMAGE_GENERATE_OUTPUT_SCHEMA = {
         "request_id": {"type": "string"},
         "status": {"type": "string"},
         "job_id": {"type": "string"},
+        "job": {"type": "object"},
         "artifact": IMAGE_ARTIFACT_OUTPUT_SCHEMA,
         "artifacts": {"type": "array", "items": IMAGE_ARTIFACT_OUTPUT_SCHEMA},
         "provider_output": {"type": "object"},

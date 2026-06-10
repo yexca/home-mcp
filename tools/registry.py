@@ -24,6 +24,7 @@ class ToolDefinition:
     risk_level: str
     handler: ToolHandler
     creates_job: bool = False
+    background_handler: ToolHandler | None = None
 
 
 class ToolRegistry:
@@ -69,6 +70,11 @@ def _validate_definition(definition: ToolDefinition) -> None:
         raise GatewayError(INVALID_ARGUMENT, f"forbidden schema field: {bad}")
     if not callable(definition.handler):
         raise GatewayError(INVALID_ARGUMENT, "tool handler must be callable")
+    if definition.background_handler is not None:
+        if not definition.creates_job:
+            raise GatewayError(INVALID_ARGUMENT, "background tools must create jobs")
+        if not callable(definition.background_handler):
+            raise GatewayError(INVALID_ARGUMENT, "background_handler must be callable")
 
 
 def _find_forbidden_schema_key(value: Any) -> str | None:

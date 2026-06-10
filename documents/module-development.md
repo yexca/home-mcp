@@ -28,6 +28,16 @@ def register_tools(registry, settings) -> None:
 The function should return without registering tools when the module is not
 enabled.
 
+Manifests may also expose optional startup maintenance hooks:
+
+```python
+def startup_reconcile(services, settings) -> None:
+    ...
+```
+
+Startup hooks must be module-owned maintenance only. They should not register
+tools or start transport services.
+
 ## Tool Definition Rules
 
 Use `tools.registry.ToolDefinition`:
@@ -43,6 +53,7 @@ registry.register(
         risk_level="medium",
         handler=example_action,
         creates_job=True,
+        background_handler=None,
     )
 )
 ```
@@ -55,6 +66,8 @@ Rules enforced by the registry:
 - Schema fields must not include sensitive names such as `api_key`, `token`,
   `base_url`, `authorization`, `access_token`, or `path`.
 - Handlers must be callable and may be sync or async.
+- Background handlers are optional, must be callable when provided, and must
+  only be used with `creates_job=True`.
 
 ## Service Rules
 
@@ -73,6 +86,12 @@ Use the context for:
 
 Do not bypass `ToolDispatcher` for normal tool execution. The dispatcher owns
 validation, caller resolution, policy, jobs, audit, and failure shaping.
+
+For long-running tools, register a `background_handler` on the tool definition.
+The background handler receives the same validated arguments and
+`RequestContext`, schedules worker-owned execution, and returns an accepted
+response quickly. The worker is then responsible for marking the existing job
+and audit event as succeeded or failed.
 
 ## Provider Rules
 
@@ -114,8 +133,11 @@ Set `creates_job=True` when the tool:
 - Submits a print job.
 - Performs any user-visible side effect.
 
-The dispatcher creates and finishes jobs automatically. Service code can call
-`ctx.jobs.update_progress(ctx.job_id, progress, summary)` for longer workflows.
+The dispatcher creates and finishes jobs automatically for synchronous tools.
+For background tools, the dispatcher creates and starts the job, then the
+module background worker finishes the job and audit event. Service code can
+call `ctx.jobs.update_progress(ctx.job_id, progress, summary)` for longer
+workflows.
 
 ## Policy And Risk
 

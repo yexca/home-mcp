@@ -5,6 +5,7 @@ import base64
 import json
 import socket
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib import error
@@ -18,6 +19,8 @@ from core.errors import (
 )
 from core.ids import new_request_id
 from core.policy import CallerIdentity
+from core.time import utc_now
+from modules.image.background import reconcile_stale_image_jobs
 from modules.image.providers.ikun_openai_compatible import IkunOpenAICompatibleProvider, ProviderImageOutput, ProviderImageResponse
 from modules.image.service import DownloadedImage, ImageGenerationService, download_image_url
 from tests.helpers import fresh_image_gateway
@@ -55,6 +58,20 @@ def make_context(services) -> RequestContext:
         job_id=None,
         metadata={},
     )
+
+
+def wait_for_job(services, job_id: str, status: str | None = None, timeout: float = 3):
+    caller = CallerIdentity("host_assistant", "admin", True)
+    deadline = time.monotonic() + timeout
+    last = None
+    while time.monotonic() < deadline:
+        last = services.jobs.get(job_id, caller)
+        if status and last.status == status:
+            return last
+        if not status and last.status in {"succeeded", "failed", "canceled"}:
+            return last
+        time.sleep(0.02)
+    return last
 
 
 class ImageGenerateServiceTests(unittest.TestCase):
@@ -200,11 +217,137 @@ class ImageGenerateServiceTests(unittest.TestCase):
                 authorization="Bearer test-host-token",
             )
         )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "accepted")
+        job = wait_for_job(services, result["job_id"], "failed")
         rows = services.artifacts.conn.execute("SELECT input_summary_json, error_message FROM audit_events").fetchall()
 
-        self.assertFalse(result["ok"])
+        self.assertEqual(job.error_code, PROVIDER_UNAVAILABLE)
         self.assertNotIn("test-image-api-key", str(result))
         self.assertNotIn("test-image-api-key", str([tuple(row) for row in rows]))
+
+    def test_image_generate_returns_job_before_provider_completion(self) -> None:
+        AsyncProviderHTTPRequestHandler.reset()
+        server = ThreadingHTTPServer(("127.0.0.1", 0), AsyncProviderHTTPRequestHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        host, port = server.server_address
+        services, _, dispatcher = fresh_image_gateway()
+        services.config.raw["modules"]["image"]["ikun"]["base_url"] = f"http://{host}:{port}"
+        try:
+            started = time.monotonic()
+            result = asyncio.run(
+                dispatcher.dispatch(
+                    "image_generate",
+                    {"prompt": "draw a queued image"},
+                    authorization="Bearer test-host-token",
+                )
+            )
+            elapsed = time.monotonic() - started
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["status"], "accepted")
+            self.assertLess(elapsed, 0.5)
+            running = services.jobs.get(result["job_id"], CallerIdentity("host_assistant", "admin", True))
+            self.assertEqual(running.status, "running")
+
+            AsyncProviderHTTPRequestHandler.release_event.set()
+            job = wait_for_job(services, result["job_id"], "succeeded")
+        finally:
+            AsyncProviderHTTPRequestHandler.release_event.set()
+            server.shutdown()
+            thread.join(timeout=2)
+            server.server_close()
+
+        self.assertEqual(job.status, "succeeded")
+        self.assertEqual(len(job.artifact_ids), 1)
+        self.assertEqual(job.result_summary["status"], "succeeded")
+
+    def test_image_generate_deadline_marks_job_failed(self) -> None:
+        AsyncProviderHTTPRequestHandler.reset()
+        server = ThreadingHTTPServer(("127.0.0.1", 0), AsyncProviderHTTPRequestHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        host, port = server.server_address
+        services, _, dispatcher = fresh_image_gateway()
+        services.config.raw["modules"]["image"]["ikun"]["base_url"] = f"http://{host}:{port}"
+        services.config.raw["modules"]["image"]["total_timeout_seconds"] = 0.1
+        try:
+            result = asyncio.run(
+                dispatcher.dispatch(
+                    "image_generate",
+                    {"prompt": "draw a slow image"},
+                    authorization="Bearer test-host-token",
+                )
+            )
+            job = wait_for_job(services, result["job_id"], "failed")
+            audit = services.artifacts.conn.execute(
+                "SELECT status, error_code FROM audit_events WHERE job_id = ?",
+                (result["job_id"],),
+            ).fetchone()
+        finally:
+            AsyncProviderHTTPRequestHandler.release_event.set()
+            server.shutdown()
+            thread.join(timeout=2)
+            server.server_close()
+
+        self.assertEqual(job.status, "failed")
+        self.assertEqual(job.error_code, PROVIDER_TIMEOUT)
+        self.assertEqual(audit["status"], "failed")
+        self.assertEqual(audit["error_code"], PROVIDER_TIMEOUT)
+
+    def test_stale_image_generate_jobs_are_reconciled(self) -> None:
+        services, _, _ = fresh_image_gateway()
+        services.config.raw["modules"]["image"]["total_timeout_seconds"] = 1
+        job = services.jobs.create(
+            request_id="req_stale",
+            caller_id="host_assistant",
+            tool_name="image_generate",
+            input_summary={"prompt": {"prefix": "draw", "length": 4}},
+        )
+        services.jobs.mark_running(job.id)
+        audit_id = services.audit.start(
+            request_id="req_stale",
+            job_id=job.id,
+            caller_id="host_assistant",
+            tool_name="image_generate",
+            risk_level="medium",
+            arguments={"prompt": "draw"},
+        )
+        old = (utc_now().replace(year=2000)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        with services.artifacts.conn:
+            services.artifacts.conn.execute("UPDATE jobs SET updated_at = ? WHERE id = ?", (old, job.id))
+
+        reconciled = reconcile_stale_image_jobs(services)
+        updated = services.jobs.get(job.id, CallerIdentity("host_assistant", "admin", True))
+        audit = services.artifacts.conn.execute("SELECT status, error_code FROM audit_events WHERE id = ?", (audit_id,)).fetchone()
+
+        self.assertEqual(reconciled, [job.id])
+        self.assertEqual(updated.status, "failed")
+        self.assertEqual(updated.error_code, PROVIDER_TIMEOUT)
+        self.assertEqual(audit["status"], "failed")
+        self.assertEqual(audit["error_code"], PROVIDER_TIMEOUT)
+
+
+class AsyncProviderHTTPRequestHandler(BaseHTTPRequestHandler):
+    release_event = threading.Event()
+    request_started = threading.Event()
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.release_event = threading.Event()
+        cls.request_started = threading.Event()
+
+    def do_POST(self) -> None:
+        self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        type(self).request_started.set()
+        type(self).release_event.wait(timeout=5)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps({"data": [{"b64_json": base64.b64encode(PNG_BYTES).decode("ascii")}]}).encode("utf-8"))
+
+    def log_message(self, format, *args):
+        return
 
 
 class ProviderHTTPRequestHandler(BaseHTTPRequestHandler):

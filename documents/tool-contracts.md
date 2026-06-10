@@ -29,8 +29,29 @@ Failure responses include:
 }
 ```
 
-When a tool has `creates_job=True`, the dispatcher creates a job and adds
-`job_id` to the final result.
+When a synchronous tool has `creates_job=True`, the dispatcher creates a job,
+waits for the handler to finish, and adds `job_id` to the final result.
+
+Some long-running tools use a background contract. These tools still have
+`creates_job=True`, but return quickly with an accepted job response:
+
+```json
+{
+  "ok": true,
+  "status": "accepted",
+  "request_id": "req_...",
+  "job_id": "job_...",
+  "job": {
+    "id": "job_...",
+    "status": "running",
+    "progress": 0
+  }
+}
+```
+
+Callers should poll `job_status` until the job reaches a terminal state. On
+success, the job record includes artifact IDs and a result summary; callers can
+then fetch artifact metadata with `artifact_get`.
 
 ## Built-In Tools
 
@@ -113,7 +134,7 @@ Registered only when `modules.image.enabled` is true.
 
 ### `image_generate`
 
-Risk: `medium`; creates a job.
+Risk: `medium`; creates a background job.
 
 Input:
 
@@ -138,11 +159,13 @@ Rules:
 - `quality` must be listed in `allowed_qualities`.
 - `output_format` must be `png`, `jpeg`, or `webp` and allowed by config.
 
-Output contains `artifact`, `artifacts`, and `provider_output`.
+Immediate output uses the background contract and contains `job_id` plus a
+running job summary. Poll `job_status` for completion. When the job succeeds,
+its `artifact_ids` and `result_summary` reference the persisted image artifact.
 
 ### `image_edit`
 
-Risk: `medium`; creates a job.
+Risk: `medium`; creates a synchronous job.
 
 Input:
 

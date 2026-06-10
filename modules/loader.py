@@ -3,13 +3,17 @@ from __future__ import annotations
 import importlib
 import pkgutil
 from types import ModuleType
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from app.config import Settings
 from core.errors import GatewayError, INVALID_ARGUMENT
 from tools.registry import ToolRegistry
 
+if TYPE_CHECKING:
+    from transport.request_context import CoreServices
+
 RegisterTools = Callable[[ToolRegistry, Settings], None]
+StartupHook = Callable[["CoreServices", Settings], None]
 
 
 def register_configured_module_tools(
@@ -27,6 +31,23 @@ def register_configured_module_tools(
         manifest = importlib.import_module(f"{package_name}.{module_name}.manifest")
         register = _register_function(manifest, module_name)
         register(registry, settings)
+
+
+def run_configured_module_startup_hooks(
+    services: "CoreServices",
+    settings: Settings,
+    *,
+    package_name: str = "modules",
+) -> None:
+    package = importlib.import_module(package_name)
+    module_names = _discover_module_names(package)
+    for module_name in sorted(_enabled_module_names(settings)):
+        if module_name not in module_names:
+            raise GatewayError(INVALID_ARGUMENT, f"enabled module has no package: {module_name}")
+        manifest = importlib.import_module(f"{package_name}.{module_name}.manifest")
+        hook = getattr(manifest, "startup_reconcile", None)
+        if callable(hook):
+            hook(services, settings)
 
 
 def _enabled_module_names(settings: Settings) -> list[str]:

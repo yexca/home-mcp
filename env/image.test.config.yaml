@@ -39,6 +39,8 @@ modules:
       - jpeg
       - webp
     max_prompt_chars: 100
+    total_timeout_seconds: 5
+    stale_job_grace_seconds: 0
     max_download_bytes: 1024
     max_edit_input_images: 2
     max_edit_input_image_bytes: 32

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import base64
 import binascii
+import logging
 import socket
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib import error, request
@@ -29,6 +31,8 @@ EXTENSION_BY_MIME = {
     "image/webp": "webp",
 }
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True, slots=True)
 class DownloadedImage:
@@ -37,50 +41,105 @@ class DownloadedImage:
     source_host: str
 
 
-class ImageGenerationService:
+@dataclass(frozen=True, slots=True)
+class PreparedImageGenerate:
+    prompt: str
+    n: int
+    size: str
+    quality: str
+    output_format: str
+
+
+@dataclass(frozen=True, slots=True)
+class ImageDeadline:
+    expires_at: float
+
+    @classmethod
+    def after(cls, seconds: float) -> "ImageDeadline":
+        return cls(time.monotonic() + seconds)
+
+    def remaining_seconds(self) -> float:
+        return self.expires_at - time.monotonic()
+
+    def check(self) -> None:
+        if self.remaining_seconds() <= 0:
+            raise GatewayError(
+                PROVIDER_TIMEOUT,
+                "image job exceeded gateway deadline or was abandoned during restart",
+                retryable=True,
+            )
+
+
+class _ImageGenerationBase:
     def __init__(self, provider: ImageProvider, downloader: Any | None = None) -> None:
         self.provider = provider
         self.downloader = downloader or download_image_url
 
     async def generate(self, arguments: dict[str, Any], ctx: RequestContext) -> dict[str, Any]:
+        prepared = prepare_image_generate(arguments, ctx)
+        return self.generate_prepared(prepared, ctx)
+
+    def generate_prepared(
+        self,
+        prepared: PreparedImageGenerate,
+        ctx: RequestContext,
+        deadline: ImageDeadline | None = None,
+    ) -> dict[str, Any]:
         image_config = ctx.config.modules.get("image", {})
-        prompt = _validated_prompt(arguments.get("prompt", ""), int(image_config.get("max_prompt_chars", 4000)))
-        n = int(arguments.get("n", 1))
-        if n != 1:
-            raise GatewayError(INVALID_ARGUMENT, "n must be 1 for image_generate")
-        size = _validated_size(arguments.get("size", "auto"), image_config)
-        quality = _validated_member(arguments.get("quality", "auto"), image_config.get("allowed_qualities", ["auto"]), "quality")
-        output_format = _validated_member(
-            arguments.get("output_format", "png"),
-            image_config.get("allowed_output_formats", ["png", "jpeg", "webp"]),
-            "output_format",
-        )
-
-        ctx.limits.check(
-            f"image_generate:{ctx.caller.caller_id}:day",
-            limit=int(ctx.config.limits.get("image_jobs_per_caller_per_day", 20)),
-            window_seconds=24 * 60 * 60,
-        )
+        if deadline:
+            deadline.check()
         response = self.provider.generate(
-            prompt=prompt,
-            n=n,
-            size=size,
-            quality=quality,
-            output_format=output_format,
+            prompt=prepared.prompt,
+            n=prepared.n,
+            size=prepared.size,
+            quality=prepared.quality,
+            output_format=prepared.output_format,
         )
-
+        logger.info("image provider response received", extra={"request_id": ctx.request_id, "job_id": ctx.job_id})
+        if deadline:
+            deadline.check()
         return _persist_image_outputs(
             response=response,
-            output_format=output_format,
+            output_format=prepared.output_format,
             image_config=image_config,
             downloader=self.downloader,
             ctx=ctx,
             provider_model=self.provider.model,
             source_tool="image_generate",
-            size=size,
-            quality=quality,
+            size=prepared.size,
+            quality=prepared.quality,
+            deadline=deadline,
         )
 
+
+def prepare_image_generate(arguments: dict[str, Any], ctx: RequestContext) -> PreparedImageGenerate:
+    image_config = ctx.config.modules.get("image", {})
+    prompt = _validated_prompt(arguments.get("prompt", ""), int(image_config.get("max_prompt_chars", 4000)))
+    n = int(arguments.get("n", 1))
+    if n != 1:
+        raise GatewayError(INVALID_ARGUMENT, "n must be 1 for image_generate")
+    size = _validated_size(arguments.get("size", "auto"), image_config)
+    quality = _validated_member(arguments.get("quality", "auto"), image_config.get("allowed_qualities", ["auto"]), "quality")
+    output_format = _validated_member(
+        arguments.get("output_format", "png"),
+        image_config.get("allowed_output_formats", ["png", "jpeg", "webp"]),
+        "output_format",
+    )
+    ctx.limits.check(
+        f"image_generate:{ctx.caller.caller_id}:day",
+        limit=int(ctx.config.limits.get("image_jobs_per_caller_per_day", 20)),
+        window_seconds=24 * 60 * 60,
+    )
+    return PreparedImageGenerate(
+        prompt=prompt,
+        n=n,
+        size=size,
+        quality=quality,
+        output_format=output_format,
+    )
+
+
+class ImageGenerationService(_ImageGenerationBase):
     async def edit(self, arguments: dict[str, Any], ctx: RequestContext) -> dict[str, Any]:
         image_config = ctx.config.modules.get("image", {})
         prompt = _validated_prompt(arguments.get("prompt", ""), int(image_config.get("max_prompt_chars", 4000)))
@@ -147,11 +206,16 @@ def _persist_image_outputs(
     size: str,
     quality: str,
     extra_metadata: dict[str, Any] | None = None,
+    deadline: ImageDeadline | None = None,
 ) -> dict[str, Any]:
     artifacts = []
     response_types: list[str] = []
     for item in response.outputs:
+        if deadline:
+            deadline.check()
         downloaded = _resolve_output(item, output_format, image_config, downloader)
+        if deadline:
+            deadline.check()
         metadata = {
             "provider": "ikun",
             "model": provider_model,
@@ -199,6 +263,7 @@ def download_image_url(url: str, image_config: dict[str, Any]) -> DownloadedImag
     if not parsed.hostname or parsed.hostname not in allowed_hosts:
         raise GatewayError(PROVIDER_UNAVAILABLE, "provider image URL host is not allowed", retryable=False)
 
+    logger.info("provider image URL download started", extra={"source_host": parsed.hostname})
     max_bytes = int(image_config.get("max_download_bytes", 10 * 1024 * 1024))
     req = request.Request(
         url,

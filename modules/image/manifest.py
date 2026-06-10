@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from app.config import Settings
+from transport.request_context import CoreServices
 from modules.image.schemas import (
     IMAGE_EDIT_INPUT_SCHEMA,
     IMAGE_EDIT_OUTPUT_SCHEMA,
     IMAGE_GENERATE_INPUT_SCHEMA,
     IMAGE_GENERATE_OUTPUT_SCHEMA,
 )
+from modules.image.background import image_generate_background, reconcile_stale_image_jobs
 from modules.image.service import image_edit, image_generate
 from tools.registry import ToolDefinition, ToolRegistry
 
@@ -25,6 +27,7 @@ def register_image_tools(registry: ToolRegistry, settings: Settings) -> None:
             risk_level="medium",
             handler=image_generate,
             creates_job=True,
+            background_handler=image_generate_background,
         )
     )
     registry.register(
@@ -42,3 +45,7 @@ def register_image_tools(registry: ToolRegistry, settings: Settings) -> None:
 
 
 register_tools = register_image_tools
+
+
+def startup_reconcile(services: CoreServices, settings: Settings) -> None:
+    reconcile_stale_image_jobs(services)

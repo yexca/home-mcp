@@ -207,6 +207,8 @@ modules:
       - png
       - jpeg
       - webp
+    total_timeout_seconds: 600
+    stale_job_grace_seconds: 30
     ikun:
       base_url: ${IMAGE_API_BASE_URL}
       model: ${IMAGE_API_MODEL}
@@ -231,6 +233,15 @@ image artifacts. URL downloads require an allowed HTTPS host unless
 `allow_http_image_urls` is explicitly true. `allowed_image_url_hosts` should
 list the hosts found in provider response image URLs, such as CDN hosts, and
 should remain explicit rather than allowing arbitrary hosts.
+
+`image_generate` uses a background job contract. `total_timeout_seconds`
+defines the gateway-owned wall-clock deadline for provider generation, provider
+response decoding, provider image URL download, and artifact persistence.
+`ikun.timeout_seconds` remains the per-socket timeout passed to the provider
+HTTP adapter. On gateway deadline expiry, the job is marked failed with
+`PROVIDER_TIMEOUT`. `stale_job_grace_seconds` is added to the deadline when
+startup reconciliation decides whether an old non-terminal image job was
+abandoned during restart.
 
 For editing existing local images, callers must first import the image bytes
 with `artifact_upload_image`:

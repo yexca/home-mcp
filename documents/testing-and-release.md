@@ -75,8 +75,10 @@ Image:
 - Set `IMAGE_API_BASE_URL`, `IMAGE_API_MODEL`, and `IMAGE_API_KEY`.
 - Confirm `readyz` shows image enabled.
 - Call `image_generate`.
-- Verify the response contains `job_id`, `artifact.id`, `sha256`, and
-  `download_url`.
+- Verify the response contains `status: accepted` and `job_id`.
+- Poll `job_status` until the job reaches `succeeded`.
+- Verify the final job contains image artifact IDs.
+- Call `artifact_get` for the artifact and verify `sha256` and `download_url`.
 
 TTS:
 

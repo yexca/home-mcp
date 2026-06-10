@@ -73,8 +73,15 @@ class ToolDispatcher:
                 audit=self.services.audit,
                 limits=self.services.limits,
                 job_id=job_id,
+                audit_id=audit_id,
+                policy_decision=policy_decision,
                 metadata=metadata or {},
             )
+            if definition.background_handler:
+                result = await call_handler(definition.background_handler, validated, ctx)
+                if job_id:
+                    result.setdefault("job_id", job_id)
+                return result
             result = await call_handler(definition.handler, validated, ctx)
             artifact_ids = _extract_artifact_ids(result)
             if job_id:
@@ -122,12 +129,17 @@ class ToolDispatcher:
 
 def _extract_artifact_ids(result: dict[str, Any]) -> list[str]:
     ids: list[str] = []
+    seen: set[str] = set()
     artifact = result.get("artifact")
     if isinstance(artifact, dict) and isinstance(artifact.get("id"), str):
         ids.append(artifact["id"])
+        seen.add(artifact["id"])
     artifacts = result.get("artifacts")
     if isinstance(artifacts, list):
         for item in artifacts:
             if isinstance(item, dict) and isinstance(item.get("id"), str):
-                ids.append(item["id"])
+                artifact_id = item["id"]
+                if artifact_id not in seen:
+                    ids.append(artifact_id)
+                    seen.add(artifact_id)
     return ids

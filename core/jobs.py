@@ -131,6 +131,40 @@ class JobManager:
                 (error_code, error_message, now, now, job_id),
             )
 
+    def mark_stale_failed(
+        self,
+        *,
+        tool_name: str,
+        stale_before: str,
+        error_code: str,
+        error_message: str,
+    ) -> list[str]:
+        rows = self.conn.execute(
+            """
+            SELECT id FROM jobs
+            WHERE tool_name = ?
+              AND status NOT IN ('succeeded', 'failed', 'canceled')
+              AND updated_at < ?
+            """,
+            (tool_name, stale_before),
+        ).fetchall()
+        job_ids = [row["id"] for row in rows]
+        if not job_ids:
+            return []
+        now = utc_now_iso()
+        placeholders = ",".join("?" for _ in job_ids)
+        with self.conn:
+            self.conn.execute(
+                f"""
+                UPDATE jobs
+                SET status = 'failed', error_code = ?, error_message = ?,
+                    updated_at = ?, finished_at = ?
+                WHERE id IN ({placeholders})
+                """,
+                (error_code, error_message, now, now, *job_ids),
+            )
+        return job_ids
+
     def get(self, job_id: str, caller: CallerIdentity) -> Job:
         job = self._get_unchecked(job_id)
         if job.caller_id != caller.caller_id and not caller.is_admin:
