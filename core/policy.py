@@ -92,6 +92,8 @@ class PolicyEngine:
             return PolicyDecision("allow", "health checks are always allowed", ("health_check",))
         if caller.is_admin:
             return PolicyDecision("allow", "admin caller", ("admin",))
+        if tool_name == "artifact_upload_image":
+            return PolicyDecision("allow", "caller owns created artifacts", ("artifact_owner",))
         if tool_name in {"job_status", "artifact_get"}:
             return PolicyDecision("allow", "ownership is checked by the backing store", ("own_or_grant",))
         if risk_level == "high":

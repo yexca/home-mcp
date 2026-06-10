@@ -61,6 +61,37 @@ Input:
 Output includes artifact metadata and `download_url` when the caller may read
 the artifact.
 
+### `artifact_upload_image`
+
+Risk: `low`
+
+Input:
+
+```json
+{
+  "filename": "input.png",
+  "mime_type": "image/png",
+  "b64_data": "<base64 image bytes>"
+}
+```
+
+Use this tool to import caller-provided image bytes into the gateway artifact
+store before passing them to tools such as `image_edit`. The public contract
+does not accept local file paths or remote image URLs for this import step.
+
+Rules:
+
+- The caller must be authenticated.
+- `mime_type` must be `image/png`, `image/jpeg`, or `image/webp`, and must also
+  be allowed by `modules.image.allowed_edit_input_mime_types` when configured.
+- `b64_data` must be valid non-empty base64.
+- Decoded bytes must not exceed `artifacts.max_artifact_bytes`.
+- The stored artifact filename is derived from the generated artifact id. The
+  caller-provided filename is stored only as metadata.
+
+Output contains `artifact` metadata, including `id`, `mime_type`, `size_bytes`,
+`sha256`, and `download_url`.
+
 ### `job_status`
 
 Risk: `low`
@@ -128,7 +159,10 @@ Input:
 
 Use either `image_artifact_id` or `image_artifact_ids`. The current service
 requires at least one readable image artifact and enforces configured MIME,
-count, per-image size, and total-size limits.
+count, per-image size, and total-size limits. These values are gateway artifact
+ids, not local paths, public URLs, or raw image bytes. To edit an existing local
+image, first import it with `artifact_upload_image`, then pass the returned
+`artifact.id` to `image_edit`.
 
 ## TTS Tool
 

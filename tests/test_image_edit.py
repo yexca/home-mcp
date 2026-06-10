@@ -96,6 +96,35 @@ class ImageEditServiceTests(unittest.TestCase):
         self.assertEqual(result["artifact"]["metadata"]["input_artifact_ids"], [input_artifact.id])
         self.assertNotIn(encoded, str(result))
 
+    def test_uploaded_image_artifact_can_be_used_for_edit(self) -> None:
+        services, _, dispatcher = fresh_image_gateway()
+        upload = asyncio.run(
+            dispatcher.dispatch(
+                "artifact_upload_image",
+                {
+                    "filename": "local-input.png",
+                    "mime_type": "image/png",
+                    "b64_data": base64.b64encode(PNG_BYTES).decode("ascii"),
+                },
+                authorization="Bearer test-role-token",
+            )
+        )
+        provider = FakeEditProvider(
+            [ProviderImageOutput("b64_json", b64_json=base64.b64encode(OUTPUT_BYTES).decode("ascii"))]
+        )
+        caller_ctx = make_context(services, CallerIdentity("role_default", "role_play"))
+
+        result = asyncio.run(
+            ImageGenerationService(provider).edit(
+                {"prompt": "use the uploaded local image", "image_artifact_id": upload["artifact"]["id"]},
+                caller_ctx,
+            )
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(provider.calls[0]["images"][0].data, PNG_BYTES)
+        self.assertEqual(provider.calls[0]["images"][0].mime_type, "image/png")
+
     def test_multiple_ids_create_artifact_from_url_response(self) -> None:
         services, _, _ = fresh_image_gateway()
         first = create_image_artifact(services)

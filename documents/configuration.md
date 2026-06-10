@@ -77,6 +77,9 @@ database:
 `public_base_url` is used to build artifact `download_url` values. It should
 match the address clients can reach.
 
+`artifacts.max_artifact_bytes` applies to generated artifacts and caller
+uploads, including images imported through `artifact_upload_image`.
+
 Retention is configured by artifact kind:
 
 ```yaml
@@ -222,6 +225,26 @@ image artifacts. URL downloads require an allowed HTTPS host unless
 `allow_http_image_urls` is explicitly true. `allowed_image_url_hosts` should
 list the hosts found in provider response image URLs, such as CDN hosts, and
 should remain explicit rather than allowing arbitrary hosts.
+
+For editing existing local images, callers must first import the image bytes
+with `artifact_upload_image`:
+
+```json
+{
+  "filename": "input.png",
+  "mime_type": "image/png",
+  "b64_data": "<base64 image bytes>"
+}
+```
+
+The upload tool stores the bytes as an image artifact owned by the authenticated
+caller. Then pass the returned `artifact.id` as `image_artifact_id` or inside
+`image_artifact_ids` for `image_edit`. The edit inputs are gateway artifact ids,
+not local file paths or public URLs.
+
+`artifact_upload_image` accepts only `image/png`, `image/jpeg`, and
+`image/webp`, and also respects `modules.image.allowed_edit_input_mime_types`
+when that list is configured.
 
 ## TTS Module
 

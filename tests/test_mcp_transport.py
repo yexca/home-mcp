@@ -30,6 +30,11 @@ class McpTransportTests(unittest.TestCase):
         )
         arguments_by_tool = {
             "artifact_get": {"artifact_id": artifact.id},
+            "artifact_upload_image": {
+                "filename": "input.png",
+                "mime_type": "image/png",
+                "b64_data": "aW1hZ2U=",
+            },
             "job_status": {"job_id": job.id},
         }
 
