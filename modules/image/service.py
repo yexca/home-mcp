@@ -200,7 +200,14 @@ def download_image_url(url: str, image_config: dict[str, Any]) -> DownloadedImag
         raise GatewayError(PROVIDER_UNAVAILABLE, "provider image URL host is not allowed", retryable=False)
 
     max_bytes = int(image_config.get("max_download_bytes", 10 * 1024 * 1024))
-    req = request.Request(url, method="GET", headers={"Accept": "image/png,image/jpeg,image/webp"})
+    req = request.Request(
+        url,
+        method="GET",
+        headers={
+            "Accept": "image/png,image/jpeg,image/webp,*/*",
+            "User-Agent": "home-mcp-gateway/0.1",
+        },
+    )
     try:
         with request.urlopen(req, timeout=int(image_config.get("ikun", {}).get("timeout_seconds", 60))) as response:
             mime_type = _normalize_mime(response.headers.get("Content-Type", ""))
@@ -221,8 +228,9 @@ def download_image_url(url: str, image_config: dict[str, Any]) -> DownloadedImag
     except (TimeoutError, socket.timeout) as exc:
         raise GatewayError(PROVIDER_TIMEOUT, "provider image download timed out", retryable=True) from exc
     except error.HTTPError as exc:
+        status = exc.code
         exc.close()
-        raise GatewayError(PROVIDER_UNAVAILABLE, "provider image download failed", retryable=True) from exc
+        raise GatewayError(PROVIDER_UNAVAILABLE, f"provider image download failed with HTTP {status}", retryable=True) from exc
     except error.URLError as exc:
         if isinstance(exc.reason, (TimeoutError, socket.timeout)):
             raise GatewayError(PROVIDER_TIMEOUT, "provider image download timed out", retryable=True) from exc

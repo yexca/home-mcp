@@ -55,3 +55,4 @@ modules:
       timeout_seconds: 5
       allowed_image_url_hosts:
         - cdn.example.test
+        - img.opcheiben.cn

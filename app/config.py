@@ -6,6 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
 
@@ -118,6 +119,9 @@ def _validate_image_config(image_config: dict[str, Any]) -> None:
     for key in ("base_url", "model", "api_key"):
         if not ikun.get(key):
             raise ValueError(f"missing required image provider setting: {key}")
+    parsed_base_url = urlparse(str(ikun["base_url"]))
+    if parsed_base_url.path.rstrip("/").endswith("/v1/images"):
+        raise ValueError("modules.image.ikun.base_url must be the API root, not a /v1/images endpoint path")
     allowed_sizes = image_config.get("allowed_sizes") or []
     default_size = image_config.get("default_size")
     if not default_size or default_size not in allowed_sizes:

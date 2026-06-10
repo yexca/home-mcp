@@ -19,7 +19,7 @@ from core.errors import (
 from core.ids import new_request_id
 from core.policy import CallerIdentity
 from modules.image.providers.ikun_openai_compatible import IkunOpenAICompatibleProvider, ProviderImageOutput, ProviderImageResponse
-from modules.image.service import DownloadedImage, ImageGenerationService
+from modules.image.service import DownloadedImage, ImageGenerationService, download_image_url
 from tests.helpers import fresh_image_gateway
 from transport.request_context import RequestContext
 
@@ -135,6 +135,62 @@ class ImageGenerateServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "host"):
             asyncio.run(ImageGenerationService(host_provider).generate({"prompt": "draw"}, ctx))
 
+    def test_download_image_url_sends_user_agent_and_accepts_image_host(self) -> None:
+        image_server = ThreadingHTTPServer(("127.0.0.1", 0), ImageDownloadHTTPRequestHandler)
+        thread = threading.Thread(target=image_server.serve_forever, daemon=True)
+        thread.start()
+        host, port = image_server.server_address
+        try:
+            downloaded = download_image_url(
+                f"http://{host}:{port}/image.png?signature=secret",
+                {
+                    "allow_http_image_urls": True,
+                    "max_download_bytes": 1024,
+                    "ikun": {
+                        "timeout_seconds": 2,
+                        "allowed_image_url_hosts": [host],
+                    },
+                },
+            )
+        finally:
+            image_server.shutdown()
+            thread.join(timeout=2)
+            image_server.server_close()
+
+        self.assertEqual(downloaded.data, PNG_BYTES)
+        self.assertEqual(downloaded.mime_type, "image/png")
+        self.assertIn("home-mcp-gateway/0.1", ImageDownloadHTTPRequestHandler.user_agent)
+        self.assertIn("*/*", ImageDownloadHTTPRequestHandler.accept_header)
+
+    def test_download_image_url_http_error_keeps_status_without_signed_url(self) -> None:
+        image_server = ThreadingHTTPServer(("127.0.0.1", 0), ImageRejectHTTPRequestHandler)
+        thread = threading.Thread(target=image_server.serve_forever, daemon=True)
+        thread.start()
+        host, port = image_server.server_address
+        signed_url = f"http://{host}:{port}/image.png?signature=secret"
+        try:
+            with self.assertRaises(Exception) as raised:
+                download_image_url(
+                    signed_url,
+                    {
+                        "allow_http_image_urls": True,
+                        "max_download_bytes": 1024,
+                        "ikun": {
+                            "timeout_seconds": 2,
+                            "allowed_image_url_hosts": [host],
+                        },
+                    },
+                )
+        finally:
+            image_server.shutdown()
+            thread.join(timeout=2)
+            image_server.server_close()
+
+        self.assertEqual(raised.exception.code, PROVIDER_UNAVAILABLE)
+        self.assertIn("HTTP 403", raised.exception.message)
+        self.assertNotIn(signed_url, raised.exception.message)
+        self.assertNotIn("signature=secret", raised.exception.message)
+
     def test_dispatcher_audit_does_not_store_image_api_key(self) -> None:
         services, _, dispatcher = fresh_image_gateway()
         result = asyncio.run(
@@ -246,6 +302,35 @@ class IkunProviderTests(unittest.TestCase):
         with self.assertRaises(Exception) as raised:
             provider.generate(prompt="draw", n=1, size="1024x1024", quality="auto", output_format="png")
         self.assertEqual(raised.exception.code, PROVIDER_TIMEOUT)
+
+
+class ImageDownloadHTTPRequestHandler(BaseHTTPRequestHandler):
+    user_agent = ""
+    accept_header = ""
+
+    def do_GET(self) -> None:
+        type(self).user_agent = self.headers.get("User-Agent", "")
+        type(self).accept_header = self.headers.get("Accept", "")
+        if type(self).user_agent != "home-mcp-gateway/0.1":
+            self.send_response(403)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.end_headers()
+        self.wfile.write(PNG_BYTES)
+
+    def log_message(self, format, *args):
+        return
+
+
+class ImageRejectHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        self.send_response(403)
+        self.end_headers()
+
+    def log_message(self, format, *args):
+        return
 
 
 if __name__ == "__main__":

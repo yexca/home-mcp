@@ -98,7 +98,10 @@ modules:
       model: ${IMAGE_API_MODEL}
       api_key: ${IMAGE_API_KEY}
       timeout_seconds: 60
-      allowed_image_url_hosts: []
+      # Hosts that may appear in provider response image URLs. Keep this
+      # explicit and include CDN/image hosts, not only the provider API host.
+      allowed_image_url_hosts:
+        - img.opcheiben.cn
   tts:
     enabled: false
     provider: local_http
