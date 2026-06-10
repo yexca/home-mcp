@@ -19,8 +19,8 @@ tree, not the historical phase plans.
 - `tools/`: tool registry, schema validation, result shape, and dispatch.
 - `core/`: SQLite migrations, jobs, artifacts, policy, audit, IDs, limits, and errors.
 - `modules/`: optional capability modules and provider adapters.
-- `config/`, `env/`, and `.env.example`: base config, compose/test config,
-  local Compose environment template, and test runner.
+- `config/`, `env/`, `.env.example`: runtime config template/user config,
+  test configs, environment template, and test runner.
 - `deploy/`: Docker image and deployment notes.
 - `tests/`: contract, policy, artifact, provider, module, and transport tests.
 
@@ -40,19 +40,18 @@ The gateway also always registers `health_check`, `artifact_get`, and
 
 ```powershell
 python -m pip install -e .
-Copy-Item config/user.config.example.yaml config/user.config.yaml
-$env:GATEWAY_TOKEN_HOST = "change-me"
+Copy-Item config/config.example.yaml config/config.yaml
+Copy-Item .env.example .env
 python -m app.main
 ```
 
 `env/test.config.yaml` is reserved for the test runner. The recommended local
-runtime config is `config/user.config.yaml`, created from the user template.
+runtime config is `config/config.yaml`, created from the example template.
 When `CONFIG_PATH` is not set, the application auto-loads that file if it
 exists.
 
-For Docker Compose, copy `.env.example` to `.env`, edit the local tokens, and
-run `docker compose up --build`. Compose automatically reads `.env` from the
-project root.
+For Docker Compose, use the same `config/config.yaml`, edit local tokens in
+`.env`, and run `docker compose up --build`.
 
 Run tests:
 

@@ -7,13 +7,11 @@ in SQLite.
 
 The important configuration rule is:
 
-**Users edit `config/user.config.yaml`.**
+**Users edit `config/config.yaml`.**
 
-`config/config.example.yaml` is the built-in base configuration. Do not treat it
-as your personal config. For local use, copy
-`config/user.config.example.yaml` to `config/user.config.yaml`. When
-`CONFIG_PATH` is not set, the application automatically loads
-`config/user.config.yaml` if it exists.
+`config/config.example.yaml` is the template/base configuration. For local use,
+copy it to `config/config.yaml`. Both local Python runs and Docker Compose use
+that same file. Root-level `.env` keeps tokens and provider secrets.
 
 ## Quick Start
 
@@ -25,14 +23,14 @@ Requirements:
 Create your local user config:
 
 ```powershell
-Copy-Item config/user.config.example.yaml config/user.config.yaml
+Copy-Item config/config.example.yaml config/config.yaml
+Copy-Item .env.example .env
 ```
 
-Edit `config/user.config.yaml`, then run:
+Edit `config/config.yaml` and `.env`, then run:
 
 ```powershell
 python -m pip install -e .
-$env:GATEWAY_TOKEN_HOST = "change-me"
 python -m app.main
 ```
 
@@ -51,19 +49,18 @@ Use these files for different purposes:
 
 | File | Purpose |
 | --- | --- |
-| `config/user.config.yaml` | Your local user config. Create it by copying `config/user.config.example.yaml`. It is git-ignored. |
-| `config/user.config.example.yaml` | User-facing template with only common overrides. Safe to commit. |
-| `config/config.example.yaml` | Full base/default config loaded by the program first. Mostly for maintainers. |
-| `.env.example` | Docker Compose environment template. Copy it to `.env` for local secrets. |
-| `.env` | Local Docker Compose environment variables. It is git-ignored. |
-| `env/compose.config.yaml` | Config mounted by Docker Compose. |
+| `config/config.example.yaml` | Template/base config. Copy it to `config/config.yaml`. |
+| `config/config.yaml` | Your local runtime config. Used by both Python and Docker Compose. It is git-ignored. |
+| `.env.example` | Environment template. Copy it to `.env` for tokens and provider secrets. |
+| `.env` | Local environment variables for Python and Docker Compose. It is git-ignored. |
 | `env/test.config.yaml` | Test-only config used by `env/run_tests.ps1`. |
 
 The application loads configuration in this order:
 
+0. Load root `.env` into the process environment without overriding existing variables.
 1. Load `config/config.example.yaml`.
 2. If `CONFIG_PATH` is set, deep-merge that YAML over the base config.
-3. If `CONFIG_PATH` is not set and `config/user.config.yaml` exists, deep-merge that file instead.
+3. If `CONFIG_PATH` is not set and `config/config.yaml` exists, deep-merge that file instead.
 4. Replace placeholders such as `${IMAGE_API_KEY}` with environment variables.
 
 Common user-editable sections are:
@@ -77,9 +74,8 @@ Common user-editable sections are:
 - `policy.high_risk_allowed_callers`
 - `modules.image`, `modules.tts`, `modules.matrix`, `modules.printer`
 
-Secrets should stay in environment variables, not YAML files. For Docker
-Compose, copy `.env.example` to `.env` and put local token/provider values
-there.
+Secrets should stay in environment variables, not YAML files. Copy
+`.env.example` to `.env` and put local token/provider values there.
 
 For a custom config file outside the default location, set `CONFIG_PATH`
 explicitly:
@@ -147,16 +143,17 @@ read shared artifacts only when their configured caller has
 
 ## Docker
 
-Docker Compose uses `env/compose.config.yaml`:
+Docker Compose uses the same `config/config.yaml` as local Python runs:
 
 ```powershell
+Copy-Item config/config.example.yaml config/config.yaml
 Copy-Item .env.example .env
-# Edit .env and set GATEWAY_TOKEN_HOST / GATEWAY_TOKEN_ROLE_DEFAULT.
+# Edit config/config.yaml and .env.
 docker compose up --build
 ```
 
-Compose automatically reads `.env`, mounts `env/compose.config.yaml`, and
-stores artifacts plus SQLite metadata in the `home-mcp-artifacts` volume.
+Compose automatically reads `.env`, mounts `config/config.yaml`, and stores
+artifacts plus SQLite metadata under `./artifacts`.
 
 ## Tests
 

@@ -2,7 +2,6 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV CONFIG_PATH=/app/env/compose.config.yaml
 
 WORKDIR /app
 
@@ -16,7 +15,7 @@ COPY tools ./tools
 COPY transport ./transport
 COPY pyproject.toml README.md ./
 
-RUN mkdir -p /data/artifacts /app/env
+RUN mkdir -p /app/artifacts
 
 EXPOSE 8787
 

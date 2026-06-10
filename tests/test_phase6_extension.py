@@ -79,7 +79,8 @@ class Phase6ModuleExtensionTests(unittest.TestCase):
         required = [
             Path("deploy/Dockerfile"),
             Path("docker-compose.yml"),
-            Path("env/compose.config.yaml"),
+            Path("config/config.example.yaml"),
+            Path(".env.example"),
             Path("deploy/README.md"),
             Path("dev_documents/module-extension.md"),
             Path("dev_documents/release-checklist.md"),

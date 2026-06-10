@@ -15,7 +15,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings.artifacts["root"], "./tmp/test-artifacts")
         self.assertIn("host_assistant", settings.callers)
 
-    def test_auto_loads_user_config_when_config_path_is_not_set(self) -> None:
+    def test_auto_loads_config_yaml_when_config_path_is_not_set(self) -> None:
         old_cwd = Path.cwd()
         old_config_path = os.environ.pop("CONFIG_PATH", None)
         try:
@@ -37,7 +37,7 @@ class ConfigTests(unittest.TestCase):
                     ),
                     encoding="utf-8",
                 )
-                (root / "config" / "user.config.yaml").write_text(
+                (root / "config" / "config.yaml").write_text(
                     "\n".join(
                         [
                             "server:",

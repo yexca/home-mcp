@@ -12,7 +12,7 @@ tmp*/
 *.sqlite3-wal
 
 sample/
-config/user.config.yaml
+config/config.yaml
 config/local.config.yaml
 env/local.config.yaml
 dev_documents/

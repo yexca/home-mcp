@@ -57,6 +57,7 @@ class Settings:
 
 
 def load_settings(config_path: str | None = None) -> Settings:
+    _load_dotenv(Path(".env"))
     base_path = Path("config/config.example.yaml")
     data = _load_yaml(base_path)
     override_path = config_path or os.getenv("CONFIG_PATH") or _default_user_config_path()
@@ -68,8 +69,29 @@ def load_settings(config_path: str | None = None) -> Settings:
 
 
 def _default_user_config_path() -> str | None:
-    path = Path("config/user.config.yaml")
+    path = Path("config/config.yaml")
     return str(path) if path.is_file() else None
+
+
+def _load_dotenv(path: Path) -> None:
+    if not path.is_file():
+        return
+    with path.open("r", encoding="utf-8") as fh:
+        for raw_line in fh:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            if not key or key in os.environ:
+                continue
+            os.environ[key] = _unquote_env_value(value.strip())
+
+
+def _unquote_env_value(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:

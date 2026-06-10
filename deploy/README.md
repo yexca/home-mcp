@@ -32,10 +32,11 @@ deferred_loading = true
 
 ## Configuration
 
-- Compose mounts `env/compose.config.yaml` into the container.
+- Compose mounts `config/config.yaml` into the container.
 - Compose reads local values from the project-root `.env`, created from
   `.env.example`.
-- Artifacts and SQLite metadata live in the `home-mcp-artifacts` volume under `/data/artifacts`.
+- Artifacts and SQLite metadata live under the project-root `./artifacts`
+  directory, matching the default user config.
 - Secrets are supplied only through environment variables, never through checked-in YAML.
 - Keep high-risk tools out of ZeroClaw auto approve by default.
 

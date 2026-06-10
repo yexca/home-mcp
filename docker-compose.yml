@@ -6,7 +6,6 @@ services:
     image: home-mcp-gateway:0.1.0
     container_name: home-mcp-gateway
     environment:
-      CONFIG_PATH: /app/env/compose.config.yaml
       GATEWAY_TOKEN_HOST: ${GATEWAY_TOKEN_HOST:-}
       GATEWAY_TOKEN_ROLE_DEFAULT: ${GATEWAY_TOKEN_ROLE_DEFAULT:-}
       IMAGE_API_BASE_URL: ${IMAGE_API_BASE_URL:-}
@@ -21,8 +20,8 @@ services:
     ports:
       - "8787:8787"
     volumes:
-      - ./env/compose.config.yaml:/app/env/compose.config.yaml:ro
-      - home-mcp-artifacts:/data/artifacts
+      - ./config/config.yaml:/app/config/config.yaml:ro
+      - ./artifacts:/app/artifacts
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -35,6 +34,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-
-volumes:
-  home-mcp-artifacts:

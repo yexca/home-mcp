@@ -1,13 +1,16 @@
 # Configuration
 
-Configuration starts from `config/config.example.yaml`. If `CONFIG_PATH` is set,
-that file is loaded and deep-merged over the base configuration. Environment
-variables written as `${NAME}` are substituted after merging.
+Configuration starts from `config/config.example.yaml`. The local runtime
+override is `config/config.yaml`. If `CONFIG_PATH` is set, that file is loaded
+instead of `config/config.yaml` and deep-merged over the base configuration.
+Root `.env` values are loaded into the process environment without overriding
+existing variables, then `${NAME}` placeholders are substituted after merging.
 
 For normal local use, create a user config file:
 
 ```powershell
-Copy-Item config/user.config.example.yaml config/user.config.yaml
+Copy-Item config/config.example.yaml config/config.yaml
+Copy-Item .env.example .env
 python -m app.main
 ```
 
@@ -18,19 +21,18 @@ and is owned by the test runner.
 
 | File | Owner | Purpose |
 | --- | --- | --- |
-| `config/user.config.yaml` | User | Local runtime overrides. Created from `config/user.config.example.yaml` and ignored by git. |
-| `config/user.config.example.yaml` | Repository | User-facing template with common overrides. |
-| `config/config.example.yaml` | Repository | Full base/default config loaded before `CONFIG_PATH`. |
-| `.env.example` | Repository | Docker Compose environment template with placeholder token/provider variables. |
-| `.env` | User | Local Docker Compose environment values. Created from `.env.example` and ignored by git. |
-| `env/compose.config.yaml` | Repository/deployment | Config mounted by Docker Compose. |
+| `config/config.example.yaml` | Repository | Template/base config loaded before runtime overrides. |
+| `config/config.yaml` | User | Local runtime overrides used by both Python and Docker Compose. Created from `config/config.example.yaml` and ignored by git. |
+| `.env.example` | Repository | Environment template with placeholder token/provider variables. |
+| `.env` | User | Local environment values for Python and Docker Compose. Created from `.env.example` and ignored by git. |
 | `env/test.config.yaml` | Tests | Test-only config used by `env/run_tests.ps1`. |
 
 Load order:
 
+0. Load root `.env` into the process environment without overriding existing variables.
 1. Load `config/config.example.yaml`.
 2. If `CONFIG_PATH` is set, merge that file.
-3. Otherwise, if `config/user.config.yaml` exists, merge it.
+3. Otherwise, if `config/config.yaml` exists, merge it.
 4. Substitute environment placeholders.
 
 ## Required Sections
@@ -57,8 +59,10 @@ server:
   artifact_path: /artifacts
 ```
 
-`host` and `port` are passed directly to `ThreadingHTTPServer`. Compose uses
-`0.0.0.0` inside the container and publishes port `8787` to the host.
+`host` and `port` are passed directly to `ThreadingHTTPServer`. Because the
+same config is used by Docker Compose, use `0.0.0.0` when the service must be
+reachable through the published Docker port. Local clients can still connect to
+`http://127.0.0.1:8787`.
 
 ## Artifacts And Database
 
@@ -118,8 +122,8 @@ Authorization: Bearer <token>
 
 No token values should appear in YAML files, logs, tests, or documentation.
 
-For Docker Compose, copy `.env.example` to `.env` in the repository root and
-set the local values there:
+Copy `.env.example` to `.env` in the repository root and set the local values
+there:
 
 ```powershell
 Copy-Item .env.example .env
@@ -128,6 +132,8 @@ docker compose up --build
 
 Docker Compose reads `.env` for `${NAME}` substitutions in
 `docker-compose.yml`, then passes those values into the container environment.
+Local Python runs also load `.env` directly before configuration placeholders
+are substituted.
 
 ## Policy
 
