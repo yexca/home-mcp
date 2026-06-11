@@ -83,7 +83,23 @@ class ImageGenerateServiceTests(unittest.TestCase):
         edit_props = tools["image_edit"]["input_schema"]["properties"]
 
         self.assertEqual(generate_props["prompt"]["maxLength"], 100)
-        self.assertEqual(generate_props["size"]["enum"], ["auto", "1024x1024", "1024x1536"])
+        self.assertEqual(
+            generate_props["size"]["enum"],
+            [
+                "auto",
+                "1024x1024",
+                "1024x1536",
+                "1536x1024",
+                "1280x720",
+                "720x1280",
+                "1920x1080",
+                "1080x1920",
+                "2560x1440",
+                "1440x2560",
+                "3840x2160",
+                "2160x3840",
+            ],
+        )
         self.assertEqual(generate_props["quality"]["enum"], ["auto", "high"])
         self.assertEqual(generate_props["output_format"]["enum"], ["png", "jpeg", "webp"])
         self.assertEqual(edit_props["size"]["enum"], generate_props["size"]["enum"])

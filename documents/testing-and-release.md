@@ -74,6 +74,8 @@ Image:
 - Enable `modules.image`.
 - Set `IMAGE_API_BASE_URL`, `IMAGE_API_MODEL`, and `IMAGE_API_KEY`.
 - Confirm `readyz` shows image enabled.
+- Call `tools/list` and confirm `image_generate` / `image_edit` expose
+  configured `size`, `quality`, and `output_format` values as schema enums.
 - Call `image_generate`.
 - Verify the response contains `status: accepted` and `job_id`.
 - Poll `job_status` until the job reaches `succeeded`.
