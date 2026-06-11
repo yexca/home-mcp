@@ -75,6 +75,20 @@ def wait_for_job(services, job_id: str, status: str | None = None, timeout: floa
 
 
 class ImageGenerateServiceTests(unittest.TestCase):
+    def test_registered_schema_exposes_configured_image_enums(self) -> None:
+        _, registry, _ = fresh_image_gateway()
+        tools = {tool["name"]: tool for tool in registry.list_tools()}
+
+        generate_props = tools["image_generate"]["input_schema"]["properties"]
+        edit_props = tools["image_edit"]["input_schema"]["properties"]
+
+        self.assertEqual(generate_props["prompt"]["maxLength"], 100)
+        self.assertEqual(generate_props["size"]["enum"], ["auto", "1024x1024", "1024x1536"])
+        self.assertEqual(generate_props["quality"]["enum"], ["auto", "high"])
+        self.assertEqual(generate_props["output_format"]["enum"], ["png", "jpeg", "webp"])
+        self.assertEqual(edit_props["size"]["enum"], generate_props["size"]["enum"])
+        self.assertEqual(edit_props["quality"]["enum"], generate_props["quality"]["enum"])
+
     def test_url_response_creates_image_artifact_without_provider_url(self) -> None:
         services, _, _ = fresh_image_gateway()
         provider = FakeProvider([ProviderImageOutput("url", url="https://cdn.example.test/image.png")])

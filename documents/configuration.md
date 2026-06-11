@@ -221,11 +221,19 @@ modules:
   image:
     enabled: true
     provider: ikun
-    default_size: 1024x1024
+    default_size: 1920x1080
     allowed_sizes:
       - 1024x1024
       - 1024x1536
       - 1536x1024
+      - 1280x720
+      - 720x1280
+      - 1920x1080
+      - 1080x1920
+      - 2560x1440
+      - 1440x2560
+      - 3840x2160
+      - 2160x3840
     allowed_qualities:
       - auto
       - low
@@ -247,7 +255,10 @@ modules:
 ```
 
 Validation requires `provider: ikun`, a configured base URL, model, API key, and
-a `default_size` that appears in `allowed_sizes`. `base_url` must be the
+a `default_size` that appears in `allowed_sizes`. The configured
+`allowed_sizes`, `allowed_qualities`, and `allowed_output_formats` are exposed
+as tool schema enums so clients and LLMs can see valid values before calling the
+tool. `base_url` must be the
 OpenAI-compatible API root, for example `https://api.monkey-tools.cn`; do not
 include `/v1/images`, because the gateway appends the image endpoints itself.
 

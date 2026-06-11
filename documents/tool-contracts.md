@@ -167,7 +167,7 @@ Input:
 ```json
 {
   "prompt": "A clean product photo of a small desk lamp",
-  "size": "1024x1024",
+  "size": "1920x1080",
   "quality": "auto",
   "output_format": "png",
   "n": 1
@@ -181,9 +181,16 @@ Required fields:
 Rules:
 
 - `n` must be `1`.
-- `size` must resolve to an allowed size.
-- `quality` must be listed in `allowed_qualities`.
-- `output_format` must be `png`, `jpeg`, or `webp` and allowed by config.
+- `size` must be `auto` or one of the configured `allowed_sizes`.
+- `quality` must be one of the configured `allowed_qualities`.
+- `output_format` must be one of the configured `allowed_output_formats`.
+
+The tool schema exposes the configured `size`, `quality`, and `output_format`
+values as enums so clients can select valid values without reading local config.
+With the default config, `size` is one of `auto`, `1024x1024`,
+`1024x1536`, `1536x1024`, `1280x720`, `720x1280`, `1920x1080`,
+`1080x1920`, `2560x1440`, `1440x2560`, `3840x2160`, or `2160x3840`;
+`quality` is one of `auto`, `low`, `medium`, or `high`.
 
 Immediate output uses the background contract and contains `job_id` plus a
 running job summary. Poll `job_status` for completion. When the job succeeds,
@@ -199,7 +206,7 @@ Input:
 {
   "prompt": "Make the background white and keep the product unchanged",
   "image_artifact_id": "art_...",
-  "size": "1024x1024",
+  "size": "1920x1080",
   "quality": "auto",
   "output_format": "png",
   "n": 1
