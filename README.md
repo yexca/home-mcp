@@ -119,7 +119,8 @@ Built-in tools:
 Optional module tools:
 
 - `image_generate`, `image_edit`: generate or edit images and store results as image artifacts.
-- `tts_synthesize`: synthesize speech and store the audio as an artifact.
+- `tts_synthesize`: start speech synthesis as a background job; use `job_status`
+  and then `artifact_get` to retrieve the generated audio artifact.
 - `matrix_send_text`, `matrix_send_audio`: send allowlisted Matrix messages.
 - `printer_list`, `printer_print_file`: list allowlisted printers and submit print jobs.
 

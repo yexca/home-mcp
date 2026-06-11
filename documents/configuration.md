@@ -306,6 +306,8 @@ modules:
     languages: [ja-JP, en-US]
     default_format: wav
     allowed_formats: [ogg, mp3, wav]
+    total_timeout_seconds: 120
+    stale_job_grace_seconds: 30
     local_http:
       url: ${TTS_LOCAL_HTTP_URL}
       api_key: ${TTS_API_KEY}
@@ -314,6 +316,15 @@ modules:
 
 `local_http` sends JSON to the configured URL and expects an audio response with
 a supported MIME type. `mock` returns deterministic local test audio.
+
+`tts_synthesize` uses a background job contract. It returns an accepted
+`job_id` before calling the provider, and callers should poll `job_status` then
+fetch completed audio with `artifact_get`. `total_timeout_seconds` is the
+gateway-owned wall-clock deadline for synthesis and artifact persistence.
+`local_http.timeout_seconds` remains the per-socket provider timeout. On
+gateway deadline expiry, the job is marked failed with `PROVIDER_TIMEOUT`.
+`stale_job_grace_seconds` is added to the deadline when startup reconciliation
+decides whether an old non-terminal TTS job was abandoned during restart.
 
 ## Matrix Module
 

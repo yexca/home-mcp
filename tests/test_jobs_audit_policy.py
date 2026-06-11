@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import unittest
 
@@ -10,7 +11,7 @@ from tests.helpers import fresh_gateway
 
 class JobsAuditPolicyTests(unittest.TestCase):
     def test_job_status_visibility_and_terminal_state(self) -> None:
-        services, _, _ = fresh_gateway()
+        services, _, dispatcher = fresh_gateway()
         job = services.jobs.create(
             request_id="req_test",
             caller_id="role_default",
@@ -18,9 +19,26 @@ class JobsAuditPolicyTests(unittest.TestCase):
             input_summary={"text": {"length": 4, "prefix": "test"}},
         )
         services.jobs.mark_running(job.id)
+        running = asyncio.run(
+            dispatcher.dispatch(
+                "job_status",
+                {"job_id": job.id},
+                authorization="Bearer test-role-token",
+            )
+        )
         services.jobs.mark_succeeded(job.id, {"done": True}, [])
+        terminal = asyncio.run(
+            dispatcher.dispatch(
+                "job_status",
+                {"job_id": job.id},
+                authorization="Bearer test-role-token",
+            )
+        )
         visible = services.jobs.get(job.id, CallerIdentity("role_default", "role_play"))
         self.assertEqual(visible.status, "succeeded")
+        self.assertFalse(running["polling"]["terminal"])
+        self.assertEqual(running["polling"]["next_poll_after_seconds"], 2)
+        self.assertTrue(terminal["polling"]["terminal"])
         with self.assertRaises(GatewayError) as denied:
             services.jobs.get(job.id, CallerIdentity("other", "role_play"))
         self.assertEqual(denied.exception.code, ARTIFACT_FORBIDDEN)

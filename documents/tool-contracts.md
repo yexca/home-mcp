@@ -149,7 +149,10 @@ Input:
 ```
 
 Output includes the visible job record. Non-admin callers can only read their
-own jobs.
+own jobs. Non-terminal responses include a `polling` object with
+`next_poll_after_seconds`, backoff guidance, and `avoid_concurrent_polls`.
+Terminal responses include `polling.terminal: true`; callers should stop
+polling and use returned artifact ids with `artifact_get` when applicable.
 
 ## Image Tools
 
@@ -216,7 +219,7 @@ Registered only when `modules.tts.enabled` is true.
 
 ### `tts_synthesize`
 
-Risk: `medium`; creates a job.
+Risk: `medium`; creates a background job.
 
 Input:
 
@@ -240,7 +243,20 @@ Rules:
 - `speed` must be within `min_speed` and `max_speed`.
 - Provider MIME type must match the requested format.
 
-Output contains an audio artifact and provider metadata.
+Immediate output uses the background contract and contains `job_id` plus a
+running job summary. It does not include an audio artifact. Poll `job_status`
+until completion; when the job succeeds, its `artifact_ids` and compact
+`result_summary` reference the generated audio artifact. Use `artifact_get` to
+retrieve audio metadata and a signed `download_url`.
+
+Polling guidance:
+
+- Wait about `1-2` seconds after receiving `job_id` before the first
+  `job_status` call.
+- Poll every `2-5` seconds for normal TTS jobs.
+- If the job remains `running`, back off to `5-10` seconds.
+- Avoid sub-second polling and concurrent polls for the same job.
+- Stop polling once the job reaches `succeeded` or `failed`.
 
 ## Matrix Tools
 

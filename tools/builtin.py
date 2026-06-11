@@ -6,6 +6,7 @@ from typing import Any
 
 from core.artifacts import artifact_download_url
 from core.errors import GatewayError, INVALID_ARGUMENT, UNSUPPORTED_MEDIA_TYPE
+from core.jobs import TERMINAL_STATUSES
 from tools.registry import ToolDefinition, ToolRegistry
 from tools.result import success
 from transport.request_context import RequestContext
@@ -130,7 +131,19 @@ async def artifact_upload_image(arguments: dict[str, Any], ctx: RequestContext) 
 
 async def job_status(arguments: dict[str, Any], ctx: RequestContext) -> dict[str, Any]:
     job = ctx.jobs.get(arguments["job_id"], ctx.caller)
-    return success(request_id=ctx.request_id, job=job.to_dict())
+    return success(request_id=ctx.request_id, job=job.to_dict(), polling=_job_polling_guidance(job.status))
+
+
+def _job_polling_guidance(status: str) -> dict[str, Any]:
+    if status in TERMINAL_STATUSES:
+        return {"terminal": True}
+    return {
+        "terminal": False,
+        "next_poll_after_seconds": 2,
+        "backoff_after_seconds": 5,
+        "max_poll_interval_seconds": 10,
+        "avoid_concurrent_polls": True,
+    }
 
 
 def _normalize_mime(content_type: str) -> str:

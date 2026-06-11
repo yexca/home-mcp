@@ -186,6 +186,10 @@ def _validate_tts_config(tts_config: dict[str, Any]) -> None:
     default_format = tts_config.get("default_format")
     if not default_format or default_format not in allowed_formats:
         raise ValueError("modules.tts.default_format must be in allowed_formats")
+    if float(tts_config.get("total_timeout_seconds", 120)) <= 0:
+        raise ValueError("modules.tts.total_timeout_seconds must be greater than 0")
+    if float(tts_config.get("stale_job_grace_seconds", 30)) < 0:
+        raise ValueError("modules.tts.stale_job_grace_seconds must be at least 0")
     if provider == "local_http" and not tts_config.get("local_http", {}).get("url"):
         raise ValueError("modules.tts.local_http.url is required")
 

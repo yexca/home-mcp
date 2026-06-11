@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from core.artifacts import artifact_download_url
@@ -20,42 +21,36 @@ MIME_BY_FORMAT = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedTTSSynthesis:
+    text: str
+    voice: str
+    language: str
+    output_format: str
+    speed: float
+
+
 class TTSSynthesisService:
     def __init__(self, provider: Any) -> None:
         self.provider = provider
 
     async def synthesize(self, arguments: dict[str, Any], ctx: RequestContext) -> dict[str, Any]:
-        tts_config = ctx.config.modules.get("tts", {})
-        text = _validated_text(arguments.get("text", ""), int(tts_config.get("max_text_chars", 4000)))
-        voice = _validated_member(arguments.get("voice", tts_config.get("default_voice")), tts_config.get("voices", []), "voice")
-        language = _validated_member(
-            arguments.get("language", tts_config.get("default_language")),
-            tts_config.get("languages", []),
-            "language",
-        )
-        output_format = _validated_member(
-            arguments.get("format", tts_config.get("default_format", "wav")),
-            tts_config.get("allowed_formats", ["ogg", "mp3", "wav"]),
-            "format",
-        )
-        speed = _validated_speed(arguments.get("speed", tts_config.get("default_speed", 1.0)), tts_config)
+        prepared = prepare_tts_synthesize(arguments, ctx)
+        return self.synthesize_prepared(prepared, ctx)
 
-        ctx.limits.check(
-            f"tts_synthesize:{ctx.caller.caller_id}:day",
-            limit=int(ctx.config.limits.get("tts_jobs_per_caller_per_day", 100)),
-            window_seconds=24 * 60 * 60,
-        )
+    def synthesize_prepared(self, prepared: PreparedTTSSynthesis, ctx: RequestContext) -> dict[str, Any]:
+        tts_config = ctx.config.modules.get("tts", {})
         response = self.provider.synthesize(
-            text=text,
-            voice=voice,
-            language=language,
-            format=output_format,
-            speed=speed,
+            text=prepared.text,
+            voice=prepared.voice,
+            language=prepared.language,
+            format=prepared.output_format,
+            speed=prepared.speed,
         )
         allowed_mimes = set(tts_config.get("allowed_mime_types") or ctx.config.policy.get("audio_mime_types") or EXTENSION_BY_MIME)
         if response.mime_type not in allowed_mimes or response.mime_type not in EXTENSION_BY_MIME:
             raise GatewayError(UNSUPPORTED_MEDIA_TYPE, "tts audio MIME type is not supported", retryable=False)
-        if response.mime_type != MIME_BY_FORMAT[output_format]:
+        if response.mime_type != MIME_BY_FORMAT[prepared.output_format]:
             raise GatewayError(UNSUPPORTED_MEDIA_TYPE, "tts provider returned a different audio format", retryable=False)
 
         artifact = ctx.artifacts.create_from_bytes(
@@ -71,7 +66,7 @@ class TTSSynthesisService:
                 "voice": response.voice,
                 "language": response.language,
                 "format": response.format,
-                "speed": speed,
+                "speed": prepared.speed,
             },
         )
         return success(
@@ -81,20 +76,53 @@ class TTSSynthesisService:
         )
 
 
-async def tts_synthesize(arguments: dict[str, Any], ctx: RequestContext) -> dict[str, Any]:
+def prepare_tts_synthesize(arguments: dict[str, Any], ctx: RequestContext) -> PreparedTTSSynthesis:
     tts_config = ctx.config.modules.get("tts", {})
+    text = _validated_text(arguments.get("text", ""), int(tts_config.get("max_text_chars", 4000)))
+    voice = _validated_member(arguments.get("voice", tts_config.get("default_voice")), tts_config.get("voices", []), "voice")
+    language = _validated_member(
+        arguments.get("language", tts_config.get("default_language")),
+        tts_config.get("languages", []),
+        "language",
+    )
+    output_format = _validated_member(
+        arguments.get("format", tts_config.get("default_format", "wav")),
+        tts_config.get("allowed_formats", ["ogg", "mp3", "wav"]),
+        "format",
+    )
+    speed = _validated_speed(arguments.get("speed", tts_config.get("default_speed", 1.0)), tts_config)
+
+    ctx.limits.check(
+        f"tts_synthesize:{ctx.caller.caller_id}:day",
+        limit=int(ctx.config.limits.get("tts_jobs_per_caller_per_day", 100)),
+        window_seconds=24 * 60 * 60,
+    )
+    return PreparedTTSSynthesis(
+        text=text,
+        voice=voice,
+        language=language,
+        output_format=output_format,
+        speed=speed,
+    )
+
+
+def create_tts_provider(config: Any) -> Any:
+    tts_config = config.modules.get("tts", {})
     provider_name = tts_config.get("provider", "mock")
     if provider_name == "local_http":
         local_http = tts_config.get("local_http", {})
-        provider = LocalHttpTTSProvider(
+        return LocalHttpTTSProvider(
             url=str(local_http["url"]),
             timeout_seconds=int(local_http.get("timeout_seconds", 30)),
             api_key=str(local_http.get("api_key", "")),
         )
-    elif provider_name == "mock":
-        provider = MockTTSProvider()
-    else:
-        raise GatewayError(INVALID_ARGUMENT, "tts provider is not supported")
+    if provider_name == "mock":
+        return MockTTSProvider()
+    raise GatewayError(INVALID_ARGUMENT, "tts provider is not supported")
+
+
+async def tts_synthesize(arguments: dict[str, Any], ctx: RequestContext) -> dict[str, Any]:
+    provider = create_tts_provider(ctx.config)
     return await TTSSynthesisService(provider).synthesize(arguments, ctx)
 
 

@@ -88,7 +88,12 @@ TTS:
 - Enable `modules.tts` with `provider: mock` for local tests or `local_http`
   for integration tests.
 - Call `tts_synthesize`.
-- Download the returned artifact and verify the MIME type.
+- Confirm the response returns quickly with `status: accepted` and a `job_id`,
+  without an audio artifact in the immediate response.
+- Poll `job_status` until the job reaches `succeeded`.
+- Confirm the completed job contains an audio artifact id.
+- Call `artifact_get` with that artifact id.
+- Confirm the artifact is `kind: audio` and includes a signed `download_url`.
 
 Matrix:
 

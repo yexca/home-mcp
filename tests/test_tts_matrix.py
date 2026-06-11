@@ -3,13 +3,16 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote
 
-from core.errors import ARTIFACT_FORBIDDEN, INVALID_ARGUMENT, POLICY_DENIED, UNSUPPORTED_MEDIA_TYPE
+from core.errors import ARTIFACT_FORBIDDEN, INVALID_ARGUMENT, POLICY_DENIED, PROVIDER_TIMEOUT, UNSUPPORTED_MEDIA_TYPE
 from core.ids import new_request_id
 from core.policy import CallerIdentity
+from core.time import utc_now
+from modules.tts.background import reconcile_stale_tts_jobs
 from modules.matrix.providers.http_client import MatrixHttpClient
 from modules.tts.providers.local_http import LocalHttpTTSProvider, ProviderAudioResponse
 from modules.tts.service import TTSSynthesisService
@@ -32,6 +35,20 @@ def make_context(services, caller: CallerIdentity | None = None) -> RequestConte
         job_id=None,
         metadata={},
     )
+
+
+def wait_for_job(services, job_id: str, status: str | None = None, timeout: float = 3):
+    caller = CallerIdentity("host_assistant", "admin", True)
+    deadline = time.monotonic() + timeout
+    last = None
+    while time.monotonic() < deadline:
+        last = services.jobs.get(job_id, caller)
+        if status and last.status == status:
+            return last
+        if not status and last.status in {"succeeded", "failed", "canceled"}:
+            return last
+        time.sleep(0.02)
+    return last
 
 
 class FakeTTSProvider:
@@ -93,6 +110,180 @@ class TTSSynthesisTests(unittest.TestCase):
         self.assertEqual(bad_speed["error"]["code"], INVALID_ARGUMENT)
         self.assertEqual(bad_mime.exception.code, UNSUPPORTED_MEDIA_TYPE)
 
+    def test_tts_synthesize_returns_accepted_and_completes_through_shared_tools(self) -> None:
+        services, _, dispatcher = fresh_phase4_gateway()
+        accepted = asyncio.run(
+            dispatcher.dispatch(
+                "tts_synthesize",
+                {"text": "hello", "voice": "calm", "language": "en-US", "format": "wav"},
+                authorization="Bearer test-host-token",
+            )
+        )
+
+        self.assertTrue(accepted["ok"])
+        self.assertEqual(accepted["status"], "accepted")
+        self.assertIn("job_id", accepted)
+        self.assertNotIn("artifact", accepted)
+
+        job = wait_for_job(services, accepted["job_id"], "succeeded")
+        status = asyncio.run(
+            dispatcher.dispatch(
+                "job_status",
+                {"job_id": accepted["job_id"]},
+                authorization="Bearer test-host-token",
+            )
+        )
+        artifact = asyncio.run(
+            dispatcher.dispatch(
+                "artifact_get",
+                {"artifact_id": job.artifact_ids[0]},
+                authorization="Bearer test-host-token",
+            )
+        )
+
+        self.assertEqual(status["job"]["status"], "succeeded")
+        self.assertEqual(status["job"]["artifact_ids"], job.artifact_ids)
+        self.assertEqual(status["job"]["result_summary"]["provider"], "mock")
+        self.assertEqual(artifact["artifact"]["kind"], "audio")
+        self.assertIn("download_url", artifact["artifact"])
+
+    def test_tts_synthesize_returns_job_before_provider_completion(self) -> None:
+        AsyncTTSProviderHTTPRequestHandler.reset()
+        server = ThreadingHTTPServer(("127.0.0.1", 0), AsyncTTSProviderHTTPRequestHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        host, port = server.server_address
+        services, _, dispatcher = fresh_phase4_gateway()
+        services.config.raw["modules"]["tts"]["provider"] = "local_http"
+        services.config.raw["modules"]["tts"]["local_http"]["url"] = f"http://{host}:{port}/synthesize"
+        try:
+            started = time.monotonic()
+            accepted = asyncio.run(
+                dispatcher.dispatch(
+                    "tts_synthesize",
+                    {"text": "hello", "voice": "calm", "language": "en-US", "format": "wav"},
+                    authorization="Bearer test-host-token",
+                )
+            )
+            elapsed = time.monotonic() - started
+
+            self.assertTrue(accepted["ok"])
+            self.assertEqual(accepted["status"], "accepted")
+            self.assertLess(elapsed, 0.5)
+            self.assertNotIn("artifact", accepted)
+            running = services.jobs.get(accepted["job_id"], CallerIdentity("host_assistant", "admin", True))
+            self.assertEqual(running.status, "running")
+
+            AsyncTTSProviderHTTPRequestHandler.release_event.set()
+            job = wait_for_job(services, accepted["job_id"], "succeeded")
+        finally:
+            AsyncTTSProviderHTTPRequestHandler.release_event.set()
+            server.shutdown()
+            thread.join(timeout=2)
+            server.server_close()
+
+        self.assertEqual(job.status, "succeeded")
+        self.assertEqual(len(job.artifact_ids), 1)
+        self.assertEqual(job.result_summary["mime_type"], "audio/wav")
+        self.assertNotIn("download_url", str(job.result_summary))
+
+    def test_tts_provider_mime_error_fails_background_job(self) -> None:
+        TTSProviderHTTPRequestHandler.response_mime = "audio/flac"
+        services, _, dispatcher = fresh_phase4_gateway()
+        services.config.raw["modules"]["tts"]["provider"] = "local_http"
+        host, port = self._start_tts_provider(TTSProviderHTTPRequestHandler)
+        services.config.raw["modules"]["tts"]["local_http"]["url"] = f"http://{host}:{port}/synthesize"
+        try:
+            accepted = asyncio.run(
+                dispatcher.dispatch(
+                    "tts_synthesize",
+                    {"text": "hello"},
+                    authorization="Bearer test-host-token",
+                )
+            )
+            job = wait_for_job(services, accepted["job_id"], "failed")
+        finally:
+            self._stop_tts_provider()
+            TTSProviderHTTPRequestHandler.response_mime = "audio/wav"
+
+        self.assertEqual(job.error_code, UNSUPPORTED_MEDIA_TYPE)
+
+    def test_tts_deadline_marks_job_failed(self) -> None:
+        AsyncTTSProviderHTTPRequestHandler.reset()
+        server = ThreadingHTTPServer(("127.0.0.1", 0), AsyncTTSProviderHTTPRequestHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        host, port = server.server_address
+        services, _, dispatcher = fresh_phase4_gateway()
+        services.config.raw["modules"]["tts"]["provider"] = "local_http"
+        services.config.raw["modules"]["tts"]["local_http"]["url"] = f"http://{host}:{port}/synthesize"
+        services.config.raw["modules"]["tts"]["total_timeout_seconds"] = 0.1
+        try:
+            accepted = asyncio.run(
+                dispatcher.dispatch(
+                    "tts_synthesize",
+                    {"text": "slow"},
+                    authorization="Bearer test-host-token",
+                )
+            )
+            job = wait_for_job(services, accepted["job_id"], "failed")
+            audit = services.artifacts.conn.execute(
+                "SELECT status, error_code FROM audit_events WHERE job_id = ?",
+                (accepted["job_id"],),
+            ).fetchone()
+        finally:
+            AsyncTTSProviderHTTPRequestHandler.release_event.set()
+            server.shutdown()
+            thread.join(timeout=2)
+            server.server_close()
+
+        self.assertEqual(job.error_code, PROVIDER_TIMEOUT)
+        self.assertEqual(audit["status"], "failed")
+        self.assertEqual(audit["error_code"], PROVIDER_TIMEOUT)
+
+    def test_stale_tts_jobs_are_reconciled(self) -> None:
+        services, _, _ = fresh_phase4_gateway()
+        services.config.raw["modules"]["tts"]["total_timeout_seconds"] = 1
+        job = services.jobs.create(
+            request_id="req_stale",
+            caller_id="host_assistant",
+            tool_name="tts_synthesize",
+            input_summary={"text": {"prefix": "hello", "length": 5}},
+        )
+        services.jobs.mark_running(job.id)
+        audit_id = services.audit.start(
+            request_id="req_stale",
+            job_id=job.id,
+            caller_id="host_assistant",
+            tool_name="tts_synthesize",
+            risk_level="medium",
+            arguments={"text": "hello"},
+        )
+        old = (utc_now().replace(year=2000)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        with services.artifacts.conn:
+            services.artifacts.conn.execute("UPDATE jobs SET updated_at = ? WHERE id = ?", (old, job.id))
+
+        reconciled = reconcile_stale_tts_jobs(services)
+        updated = services.jobs.get(job.id, CallerIdentity("host_assistant", "admin", True))
+        audit = services.artifacts.conn.execute("SELECT status, error_code FROM audit_events WHERE id = ?", (audit_id,)).fetchone()
+
+        self.assertEqual(reconciled, [job.id])
+        self.assertEqual(updated.status, "failed")
+        self.assertEqual(updated.error_code, PROVIDER_TIMEOUT)
+        self.assertEqual(audit["status"], "failed")
+        self.assertEqual(audit["error_code"], PROVIDER_TIMEOUT)
+
+    def _start_tts_provider(self, handler):
+        self._tts_server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        self._tts_thread = threading.Thread(target=self._tts_server.serve_forever, daemon=True)
+        self._tts_thread.start()
+        return self._tts_server.server_address
+
+    def _stop_tts_provider(self):
+        self._tts_server.shutdown()
+        self._tts_thread.join(timeout=2)
+        self._tts_server.server_close()
+
 
 class TTSProviderHTTPRequestHandler(BaseHTTPRequestHandler):
     request_body = {}
@@ -106,6 +297,28 @@ class TTSProviderHTTPRequestHandler(BaseHTTPRequestHandler):
         type(self).auth_header = self.headers.get("Authorization", "")
         self.send_response(type(self).response_status)
         self.send_header("Content-Type", type(self).response_mime)
+        self.end_headers()
+        self.wfile.write(AUDIO_BYTES)
+
+    def log_message(self, format, *args):
+        return
+
+
+class AsyncTTSProviderHTTPRequestHandler(BaseHTTPRequestHandler):
+    release_event = threading.Event()
+    request_started = threading.Event()
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.release_event = threading.Event()
+        cls.request_started = threading.Event()
+
+    def do_POST(self) -> None:
+        self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        type(self).request_started.set()
+        type(self).release_event.wait(timeout=5)
+        self.send_response(200)
+        self.send_header("Content-Type", "audio/wav")
         self.end_headers()
         self.wfile.write(AUDIO_BYTES)
 

@@ -1,19 +1,5 @@
 from __future__ import annotations
 
-AUDIO_ARTIFACT_OUTPUT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "id": {"type": "string"},
-        "kind": {"type": "string"},
-        "mime_type": {"type": "string"},
-        "filename": {"type": "string"},
-        "size_bytes": {"type": "integer"},
-        "sha256": {"type": "string"},
-        "download_url": {"type": "string"},
-        "metadata": {"type": "object"},
-    },
-}
-
 TTS_SYNTHESIZE_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -32,9 +18,15 @@ TTS_SYNTHESIZE_OUTPUT_SCHEMA = {
     "properties": {
         "ok": {"type": "boolean"},
         "request_id": {"type": "string"},
-        "status": {"type": "string"},
+        "status": {"type": "string", "enum": ["accepted"]},
         "job_id": {"type": "string"},
-        "artifact": AUDIO_ARTIFACT_OUTPUT_SCHEMA,
-        "provider_output": {"type": "object"},
+        "job": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string"},
+                "status": {"type": "string"},
+                "progress": {"type": "number"},
+            },
+        },
     },
 }
