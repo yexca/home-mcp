@@ -109,8 +109,10 @@ back to `GATEWAY_TOKEN_HOST` for compatibility.
 `artifacts.max_artifact_bytes` applies to generated artifacts and caller
 uploads, including images imported through `artifact_upload_image`.
 `artifacts.max_inline_artifact_bytes` limits image bytes returned inline through
-`artifact_get`; inline content is base64-encoded in the MCP response and
-therefore grows by roughly one third over the raw file size.
+the explicit compatibility helper `artifact_get_image`; inline content is
+base64-encoded in the MCP response and therefore grows by roughly one third
+over the raw file size. Normal `artifact_get` responses do not inline bytes and
+instead return a signed `download_url`.
 
 Retention is configured by artifact kind:
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import threading
 import unittest
@@ -216,7 +215,7 @@ class McpTransportTests(unittest.TestCase):
             httpd.server_close()
             thread.join(timeout=5)
 
-    def test_artifact_get_returns_mcp_image_content(self) -> None:
+    def test_artifact_get_does_not_return_mcp_image_content(self) -> None:
         services, registry, dispatcher = fresh_gateway()
         image_bytes = b"\x89PNG\r\n\x1a\ninline-image"
         artifact = services.artifacts.create_from_bytes(
@@ -265,9 +264,7 @@ class McpTransportTests(unittest.TestCase):
             self.assertTrue(text_payload["ok"])
             self.assertEqual(text_payload["artifact"]["id"], artifact.id)
             self.assertNotIn("_mcp_content", text_payload)
-            self.assertEqual(content[1]["type"], "image")
-            self.assertEqual(content[1]["mimeType"], "image/png")
-            self.assertEqual(base64.b64decode(content[1]["data"]), image_bytes)
+            self.assertEqual(len(content), 1)
         finally:
             conn.close()
             httpd.shutdown()

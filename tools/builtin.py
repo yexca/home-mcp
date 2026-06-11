@@ -49,15 +49,9 @@ async def health_check(arguments: dict[str, Any], ctx: RequestContext) -> dict[s
 
 async def artifact_get(arguments: dict[str, Any], ctx: RequestContext) -> dict[str, Any]:
     artifact = ctx.artifacts.get(arguments["artifact_id"], ctx.caller)
-    mcp_content = _mcp_image_content(artifact, ctx, strict=False)
-    payload: dict[str, Any] = {
-        "artifact": artifact.to_metadata(download_url=artifact_download_url(ctx.config, artifact, ctx.metadata)),
-    }
-    if mcp_content:
-        payload["_mcp_content"] = mcp_content
     return success(
         request_id=ctx.request_id,
-        **payload,
+        artifact=artifact.to_metadata(download_url=artifact_download_url(ctx.config, artifact, ctx.metadata)),
     )
 
 
@@ -167,7 +161,7 @@ def register_builtin_tools(registry: ToolRegistry) -> None:
         ToolDefinition(
             name="artifact_get",
             title="Artifact Get",
-            description="Return artifact metadata and inline MCP image content for readable image artifacts.",
+            description="Return readable artifact metadata and a signed download URL.",
             input_schema=ARTIFACT_ID_INPUT_SCHEMA,
             output_schema=None,
             risk_level="low",

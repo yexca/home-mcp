@@ -112,7 +112,7 @@ deferred_loading = true
 Built-in tools:
 
 - `health_check`: returns server and enabled-module status.
-- `artifact_get`: returns artifact metadata and inline MCP image content for readable image artifacts.
+- `artifact_get`: returns artifact metadata and a signed download URL.
 - `artifact_get_image`: compatibility helper that requires an inline-readable image artifact.
 - `job_status`: returns a job visible to the caller.
 
