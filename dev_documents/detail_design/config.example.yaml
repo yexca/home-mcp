@@ -1,0 +1,119 @@
+server:
+  name: home_mcp_gateway
+  version: 0.1.0
+  host: 0.0.0.0
+  port: 8787
+  mcp_path: /mcp
+  artifact_path: /artifacts
+
+artifacts:
+  root: /artifacts
+  public_base_url: http://127.0.0.1:8787/artifacts
+  retention_days:
+    image: 30
+    audio: 30
+    document: 30
+    print: 7
+    temp: 1
+  max_artifact_bytes: 52428800
+
+database:
+  path: /artifacts/metadata.sqlite3
+  wal: true
+  busy_timeout_ms: 5000
+
+limits:
+  sync_tool_timeout_seconds: 120
+  image_prompt_max_chars: 4000
+  image_jobs_per_caller_per_day: 20
+  max_image_jobs_global: 2
+  max_image_jobs_per_caller: 1
+  tts_text_max_chars: 2000
+  max_tts_jobs_global: 2
+  matrix_text_max_chars: 4000
+  matrix_messages_per_room_per_minute: 5
+  max_print_jobs_global: 1
+
+callers:
+  host_assistant:
+    role: admin
+    token_env: GATEWAY_TOKEN_HOST
+    shared_artifact_read: true
+  role_default:
+    role: role_play
+    token_env: GATEWAY_TOKEN_ROLE_DEFAULT
+    shared_artifact_read: false
+
+policy:
+  default_allow: false
+  anonymous_allowed_tools:
+    - health_check
+  allowed_matrix_rooms: []
+  allowed_printers: []
+  printable_mime_types:
+    - application/pdf
+    - image/png
+    - image/jpeg
+  audio_mime_types:
+    - audio/ogg
+    - audio/mpeg
+    - audio/wav
+
+audit:
+  sink: sqlite
+  retention_days: 90
+  prompt_summary_chars: 200
+  log_provider_urls: false
+
+modules:
+  image:
+    enabled: true
+    provider: ikun_openai_compatible
+    base_url: ${IMAGE_API_BASE_URL}
+    api_key: ${IMAGE_API_KEY}
+    model: ${IMAGE_API_MODEL}
+    request_timeout_seconds: 180
+    download_timeout_seconds: 60
+    max_concurrent: 2
+    max_input_image_bytes: 10485760
+    max_input_images: 5
+    allowed_sizes:
+      - "1024x1024"
+      - "1536x1024"
+      - "1024x1536"
+      - "3840x2160"
+      - "2160x3840"
+    default_size: "1024x1024"
+    default_quality: auto
+    default_output_format: png
+    moderation: auto
+    response_mode: auto
+    allow_http_provider_urls: false
+    allowed_provider_url_hosts:
+      - api.image-provider.example
+
+  tts:
+    enabled: false
+    provider: local_http
+    endpoint: http://tts:5000
+    request_timeout_seconds: 60
+    default_voice: default
+    default_language: auto
+    default_format: ogg_opus
+    speed_min: 0.5
+    speed_max: 2.0
+
+  matrix:
+    enabled: false
+    homeserver: ${MATRIX_HOMESERVER}
+    access_token: ${MATRIX_ACCESS_TOKEN}
+    user_id: ${MATRIX_USER_ID}
+    request_timeout_seconds: 30
+
+  printer:
+    enabled: false
+    provider: bridge_http
+    bridge_endpoint: http://host.docker.internal:8790
+    request_timeout_seconds: 60
+    max_copies: 3
+    max_print_file_bytes: 52428800
