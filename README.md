@@ -69,10 +69,12 @@ Common user-editable sections are:
 - `artifacts.root`, `artifacts.public_base_url`
 - `database.path`
 - `callers.*.token_env`
-- `policy.allowed_matrix_rooms`
-- `policy.allowed_printers`
 - `policy.high_risk_allowed_callers`
-- `modules.image`, `modules.tts`, `modules.matrix`, `modules.printer`
+- `modules.image`, `modules.localimage`
+
+At the moment, only the `image` and `localimage` modules are actually used.
+Other module directories may exist in the repository, but they are not part of
+the current practical setup.
 
 Secrets should stay in environment variables, not YAML files. Copy
 `.env.example` to `.env` and put local token/provider values there.
@@ -116,16 +118,12 @@ Built-in tools:
 - `artifact_get_image`: compatibility helper that requires an inline-readable image artifact.
 - `job_status`: returns a job visible to the caller.
 
-Optional module tools:
+Currently used module tools:
 
 - `image_generate`, `image_edit`: generate or edit images and store results as image artifacts.
-- `tts_synthesize`: start speech synthesis as a background job; use `job_status`
-  and then `artifact_get` to retrieve the generated audio artifact.
-- `matrix_send_text`, `matrix_send_audio`: send allowlisted Matrix messages.
-- `printer_list`, `printer_print_file`: list allowlisted printers and submit print jobs.
+- `localimage_generate`: generate images through a local ComfyUI workflow and store results as image artifacts.
 
-Matrix send and print submission are high-risk tools. They require an
-authenticated caller and explicit policy allowlists.
+For now, the practical module scope is limited to `image` and `localimage`.
 
 ## Authentication And Policy
 
@@ -179,7 +177,7 @@ tokens, then runs the Python `unittest` suite.
 
 ## Documentation
 
-- Developer documentation: [`dev_documents/documents/`](dev_documents/documents/README.md)
+- Developer documentation: [`documents/`](documents/README.md)
 - Deployment notes: [`deploy/README.md`](deploy/README.md)
 - Module extension notes: [`dev_documents/module-extension.md`](dev_documents/module-extension.md)
 - Chinese README: [`README.zh-cn.md`](README.zh-cn.md)

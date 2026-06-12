@@ -55,6 +55,33 @@ Invoke-RestMethod http://127.0.0.1:8787/readyz
 3. 如果设置了 `CONFIG_PATH`，合并该路径指向的 YAML；否则如果 `config/config.yaml` 存在，就合并它。
 4. 把 `${IMAGE_API_KEY}` 这类占位符替换成环境变量。
 
+常用的用户配置项包括：
+
+- `server.host`、`server.port`
+- `artifacts.root`、`artifacts.public_base_url`
+- `database.path`
+- `callers.*.token_env`
+- `policy.high_risk_allowed_callers`
+- `modules.image`、`modules.localimage`
+
+目前实际使用的模块只有 `image` 和 `localimage`。仓库中可能还保留其他模块目录，但它们不是当前实际使用范围。
+
+## 可用工具
+
+内置工具：
+
+- `health_check`：返回服务状态和已启用模块状态。
+- `artifact_get`：返回 artifact 元数据和带签名的下载链接。
+- `artifact_get_image`：读取可内联返回的图片 artifact。
+- `job_status`：查询当前调用者可见的 job。
+
+当前实际使用的模块工具：
+
+- `image_generate`、`image_edit`：生成或编辑图片，并保存为图片 artifact。
+- `localimage_generate`：通过本地 ComfyUI 工作流生成图片，并保存为图片 artifact。
+
+现阶段实际模块范围仅限 `image` 和 `localimage`。
+
 ## Docker
 
 Docker Compose 使用同一个 `config/config.yaml`：

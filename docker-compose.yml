@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile
-    image: home-mcp-gateway:0.1.0
+    image: home-mcp-gateway:0.1.1
     container_name: home-mcp-gateway
     environment:
       GATEWAY_TOKEN_HOST: ${GATEWAY_TOKEN_HOST:-}
