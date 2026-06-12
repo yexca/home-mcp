@@ -53,7 +53,7 @@ Use these files for different purposes:
 | `config/config.yaml` | Your local runtime config. Used by both Python and Docker Compose. It is git-ignored. |
 | `.env.example` | Environment template. Copy it to `.env` for tokens and provider secrets. |
 | `.env` | Local environment variables for Python and Docker Compose. It is git-ignored. |
-| `env/test.config.yaml` | Test-only config used by `env/run_tests.ps1`. |
+| `tests/config/test.config.yaml` | Test-only config used by `tests/run_tests.ps1`. |
 
 The application loads configuration in this order:
 
@@ -168,14 +168,14 @@ them directly without knowing the MCP Bearer token.
 
 ## Tests
 
-Tests use `env/test.config.yaml`; that file is not the user config.
+Tests use `tests/config/test.config.yaml`; that file is not the user config.
 
 ```powershell
-.\env\run_tests.ps1
+.\tests\run_tests.ps1
 ```
 
-The test script sets `CONFIG_PATH=env/test.config.yaml` and local test tokens,
-then runs the Python `unittest` suite.
+The test script sets `CONFIG_PATH=tests/config/test.config.yaml` and local test
+tokens, then runs the Python `unittest` suite.
 
 ## Documentation
 

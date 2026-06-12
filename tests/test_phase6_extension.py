@@ -20,7 +20,7 @@ from tools.registry import ToolRegistry
 
 class Phase6ModuleExtensionTests(unittest.TestCase):
     def setUp(self) -> None:
-        os.environ["CONFIG_PATH"] = "env/phase6.test.config.yaml"
+        os.environ["CONFIG_PATH"] = "tests/config/phase6.test.config.yaml"
         os.environ["GATEWAY_TOKEN_HOST"] = "test-host-token"
         os.environ["GATEWAY_TOKEN_ROLE_DEFAULT"] = "test-role-token"
         Path("tmp").mkdir(exist_ok=True)

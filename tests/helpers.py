@@ -9,7 +9,7 @@ from app.main import build_services
 
 
 def fresh_gateway():
-    os.environ["CONFIG_PATH"] = "env/test.config.yaml"
+    os.environ["CONFIG_PATH"] = "tests/config/test.config.yaml"
     os.environ["GATEWAY_TOKEN_HOST"] = "test-host-token"
     os.environ["GATEWAY_TOKEN_ROLE_DEFAULT"] = "test-role-token"
     os.environ["ARTIFACT_SIGNING_SECRET"] = "test-artifact-signing-secret"
@@ -22,7 +22,7 @@ def fresh_gateway():
 
 
 def fresh_image_gateway():
-    os.environ["CONFIG_PATH"] = "env/image.test.config.yaml"
+    os.environ["CONFIG_PATH"] = "tests/config/image.test.config.yaml"
     os.environ["GATEWAY_TOKEN_HOST"] = "test-host-token"
     os.environ["GATEWAY_TOKEN_ROLE_DEFAULT"] = "test-role-token"
     os.environ["ARTIFACT_SIGNING_SECRET"] = "test-artifact-signing-secret"
@@ -38,7 +38,7 @@ def fresh_image_gateway():
 
 
 def fresh_localimage_gateway():
-    os.environ["CONFIG_PATH"] = "env/localimage.test.config.yaml"
+    os.environ["CONFIG_PATH"] = "tests/config/localimage.test.config.yaml"
     os.environ["GATEWAY_TOKEN_HOST"] = "test-host-token"
     os.environ["GATEWAY_TOKEN_ROLE_DEFAULT"] = "test-role-token"
     os.environ["ARTIFACT_SIGNING_SECRET"] = "test-artifact-signing-secret"
@@ -52,7 +52,7 @@ def fresh_localimage_gateway():
 
 
 def fresh_phase4_gateway():
-    os.environ["CONFIG_PATH"] = "env/phase4.test.config.yaml"
+    os.environ["CONFIG_PATH"] = "tests/config/phase4.test.config.yaml"
     os.environ["GATEWAY_TOKEN_HOST"] = "test-host-token"
     os.environ["GATEWAY_TOKEN_ROLE_DEFAULT"] = "test-role-token"
     os.environ["ARTIFACT_SIGNING_SECRET"] = "test-artifact-signing-secret"
@@ -66,7 +66,7 @@ def fresh_phase4_gateway():
 
 
 def fresh_phase5_gateway():
-    os.environ["CONFIG_PATH"] = "env/phase5.test.config.yaml"
+    os.environ["CONFIG_PATH"] = "tests/config/phase5.test.config.yaml"
     os.environ["GATEWAY_TOKEN_HOST"] = "test-host-token"
     os.environ["GATEWAY_TOKEN_ROLE_DEFAULT"] = "test-role-token"
     os.environ["ARTIFACT_SIGNING_SECRET"] = "test-artifact-signing-secret"

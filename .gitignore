@@ -14,5 +14,3 @@ tmp*/
 sample/
 config/config.yaml
 config/local.config.yaml
-env/local.config.yaml
-dev_documents/

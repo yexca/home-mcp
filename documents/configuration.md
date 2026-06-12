@@ -14,8 +14,8 @@ Copy-Item .env.example .env
 python -m app.main
 ```
 
-Do not use `env/test.config.yaml` as the user config. It is intentionally small
-and is owned by the test runner.
+Do not use `tests/config/test.config.yaml` as the user config. It is
+intentionally small and is owned by the test runner.
 
 ## Configuration Files
 
@@ -25,7 +25,7 @@ and is owned by the test runner.
 | `config/config.yaml` | User | Local runtime overrides used by both Python and Docker Compose. Created from `config/config.example.yaml` and ignored by git. |
 | `.env.example` | Repository | Environment template with placeholder token/provider variables. |
 | `.env` | User | Local environment values for Python and Docker Compose. Created from `.env.example` and ignored by git. |
-| `env/test.config.yaml` | Tests | Test-only config used by `env/run_tests.ps1`. |
+| `tests/config/test.config.yaml` | Tests | Test-only config used by `tests/run_tests.ps1`. |
 
 Load order:
 

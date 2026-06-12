@@ -3,15 +3,16 @@
 The repository uses Python `unittest`. The standard test entry point is:
 
 ```powershell
-.\env\run_tests.ps1
+.\tests\run_tests.ps1
 ```
 
 The script sets:
 
 ```powershell
-$env:CONFIG_PATH = "env/test.config.yaml"
+$env:CONFIG_PATH = "tests/config/test.config.yaml"
 $env:GATEWAY_TOKEN_HOST = "test-host-token"
 $env:GATEWAY_TOKEN_ROLE_DEFAULT = "test-role-token"
+$env:ARTIFACT_SIGNING_SECRET = "test-artifact-signing-secret"
 python -m unittest discover -s tests
 ```
 
@@ -35,7 +36,7 @@ Current tests cover:
 Start the server:
 
 ```powershell
-$env:CONFIG_PATH = "env/test.config.yaml"
+$env:CONFIG_PATH = "tests/config/test.config.yaml"
 $env:GATEWAY_TOKEN_HOST = "test-host-token"
 python -m app.main
 ```
@@ -117,7 +118,7 @@ Printer:
 
 Before releasing or deploying:
 
-- Run `.\env\run_tests.ps1`.
+- Run `.\tests\run_tests.ps1`.
 - Create a local `.env` from `.env.example` and set non-empty local compose
   tokens.
 - Build the container with `docker compose build`.

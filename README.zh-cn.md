@@ -46,7 +46,7 @@ Invoke-RestMethod http://127.0.0.1:8787/readyz
 | `config/config.yaml` | 用户实际运行配置，本地 Python 和 Docker Compose 共用，已加入 git ignore。 |
 | `.env.example` | 环境变量模板，可以提交。 |
 | `.env` | 用户本地 token、provider key 等敏感环境变量，已加入 git ignore。 |
-| `env/test.config.yaml` | 测试脚本专用配置，不是用户运行配置。 |
+| `tests/config/test.config.yaml` | 测试脚本专用配置，不是用户运行配置。 |
 
 加载顺序：
 
@@ -84,13 +84,13 @@ deferred_loading = true
 
 ## 测试
 
-测试使用 `env/test.config.yaml`：
+测试使用 `tests/config/test.config.yaml`：
 
 ```powershell
-.\env\run_tests.ps1
+.\tests\run_tests.ps1
 ```
 
-测试脚本会设置 `CONFIG_PATH=env/test.config.yaml` 和测试 token，然后运行 `unittest`。
+测试脚本会设置 `CONFIG_PATH=tests/config/test.config.yaml` 和测试 token，然后运行 `unittest`。
 
 ## 文档
 

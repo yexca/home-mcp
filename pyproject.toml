@@ -11,4 +11,4 @@ dependencies = [
 dev = []
 
 [tool.home_mcp_gateway]
-test_config = "env/test.config.yaml"
+test_config = "tests/config/test.config.yaml"

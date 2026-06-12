@@ -9,8 +9,8 @@ from app.config import load_settings
 
 
 class ConfigTests(unittest.TestCase):
-    def test_loads_test_config_from_env_directory(self) -> None:
-        os.environ["CONFIG_PATH"] = "env/test.config.yaml"
+    def test_loads_test_config_from_config_test_directory(self) -> None:
+        os.environ["CONFIG_PATH"] = "tests/config/test.config.yaml"
         settings = load_settings()
         self.assertEqual(settings.artifacts["root"], "./tmp/test-artifacts")
         self.assertIn("host_assistant", settings.callers)
@@ -19,7 +19,7 @@ class ConfigTests(unittest.TestCase):
         previous = os.environ.get("ARTIFACT_PUBLIC_BASE_URL")
         try:
             os.environ["ARTIFACT_PUBLIC_BASE_URL"] = "http://home-mcp:8787/artifacts"
-            settings = load_settings("env/test.config.yaml")
+            settings = load_settings("tests/config/test.config.yaml")
             self.assertEqual(settings.artifacts["public_base_url"], "http://home-mcp:8787/artifacts")
         finally:
             if previous is None:
@@ -87,7 +87,7 @@ class ConfigTests(unittest.TestCase):
             os.environ["IMAGE_API_KEY"] = "test-image-api-key"
 
             with self.assertRaisesRegex(ValueError, "API root"):
-                load_settings("env/image.test.config.yaml")
+                load_settings("tests/config/image.test.config.yaml")
         finally:
             for key, value in previous.items():
                 if value is None:

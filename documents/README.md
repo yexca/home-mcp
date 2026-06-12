@@ -19,8 +19,9 @@ tree, not the historical phase plans.
 - `tools/`: tool registry, schema validation, result shape, and dispatch.
 - `core/`: SQLite migrations, jobs, artifacts, policy, audit, IDs, limits, and errors.
 - `modules/`: optional capability modules and provider adapters.
-- `config/`, `env/`, `.env.example`: runtime config template/user config,
-  test configs, environment template, and test runner.
+- `config/`, `.env.example`: runtime config template/user config and
+  environment template.
+- `tests/`: test suite, test configs, and test runner.
 - `deploy/`: Docker image and deployment notes.
 - `tests/`: contract, policy, artifact, provider, module, and transport tests.
 
@@ -45,10 +46,10 @@ Copy-Item .env.example .env
 python -m app.main
 ```
 
-`env/test.config.yaml` is reserved for the test runner. The recommended local
-runtime config is `config/config.yaml`, created from the example template.
-When `CONFIG_PATH` is not set, the application auto-loads that file if it
-exists.
+`tests/config/test.config.yaml` is reserved for the test runner. The recommended
+local runtime config is `config/config.yaml`, created from the example
+template. When `CONFIG_PATH` is not set, the application auto-loads that file
+if it exists.
 
 For Docker Compose, use the same `config/config.yaml`, edit local tokens in
 `.env`, and run `docker compose up --build`.
@@ -56,7 +57,7 @@ For Docker Compose, use the same `config/config.yaml`, edit local tokens in
 Run tests:
 
 ```powershell
-.\env\run_tests.ps1
+.\tests\run_tests.ps1
 ```
 
 List tools using the simple HTTP compatibility shape:
