@@ -140,6 +140,7 @@ def _validate(data: dict[str, Any]) -> None:
     if int(data["artifacts"].get("signed_url_ttl_seconds", 300)) <= 0:
         raise ValueError("artifacts.signed_url_ttl_seconds must be greater than 0")
     _validate_image_config(data.get("modules", {}).get("image", {}))
+    _validate_localimage_config(data.get("modules", {}).get("localimage", {}))
     _validate_tts_config(data.get("modules", {}).get("tts", {}))
     _validate_matrix_config(data.get("modules", {}).get("matrix", {}))
     _validate_printer_config(data.get("modules", {}).get("printer", {}))
@@ -166,6 +167,56 @@ def _validate_image_config(image_config: dict[str, Any]) -> None:
         raise ValueError("modules.image.total_timeout_seconds must be greater than 0")
     if float(image_config.get("stale_job_grace_seconds", 30)) < 0:
         raise ValueError("modules.image.stale_job_grace_seconds must be at least 0")
+
+
+def _validate_localimage_config(localimage_config: dict[str, Any]) -> None:
+    if not localimage_config or not bool(localimage_config.get("enabled", False)):
+        return
+    if localimage_config.get("provider") != "comfyui":
+        raise ValueError("modules.localimage.provider must be comfyui")
+    comfyui = localimage_config.get("comfyui", {})
+    base_url = str(comfyui.get("base_url", "")).strip()
+    if not base_url:
+        raise ValueError("modules.localimage.comfyui.base_url is required")
+    parsed = urlparse(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("modules.localimage.comfyui.base_url must be an http(s) URL")
+    allowed_hosts = comfyui.get("allowed_hosts") or []
+    if not isinstance(allowed_hosts, list) or not allowed_hosts:
+        raise ValueError("modules.localimage.comfyui.allowed_hosts is required")
+    if parsed.hostname not in set(str(item) for item in allowed_hosts):
+        raise ValueError("modules.localimage.comfyui.base_url host must be in allowed_hosts")
+    workflow_path = str(comfyui.get("workflow_path", "")).strip()
+    if not workflow_path:
+        raise ValueError("modules.localimage.comfyui.workflow_path is required")
+    if not Path(workflow_path).is_file():
+        raise ValueError("modules.localimage.comfyui.workflow_path must exist")
+    allowed_sizes = localimage_config.get("allowed_sizes") or []
+    default_size = localimage_config.get("default_size")
+    if not default_size or default_size not in allowed_sizes:
+        raise ValueError("modules.localimage.default_size must be in allowed_sizes")
+    allowed_qualities = localimage_config.get("allowed_qualities") or []
+    default_quality = localimage_config.get("default_quality")
+    if not default_quality or default_quality not in allowed_qualities:
+        raise ValueError("modules.localimage.default_quality must be in allowed_qualities")
+    allowed_styles = localimage_config.get("allowed_styles") or []
+    default_style = localimage_config.get("default_style")
+    if not default_style or default_style not in allowed_styles:
+        raise ValueError("modules.localimage.default_style must be in allowed_styles")
+    allowed_output_formats = localimage_config.get("allowed_output_formats") or []
+    default_output_format = localimage_config.get("default_output_format", "png")
+    if not default_output_format or default_output_format not in allowed_output_formats:
+        raise ValueError("modules.localimage.default_output_format must be in allowed_output_formats")
+    if float(localimage_config.get("total_timeout_seconds", 900)) <= 0:
+        raise ValueError("modules.localimage.total_timeout_seconds must be greater than 0")
+    if float(localimage_config.get("stale_job_grace_seconds", 30)) < 0:
+        raise ValueError("modules.localimage.stale_job_grace_seconds must be at least 0")
+    if int(comfyui.get("timeout_seconds", 30)) <= 0:
+        raise ValueError("modules.localimage.comfyui.timeout_seconds must be greater than 0")
+    if float(comfyui.get("poll_interval_seconds", 1)) <= 0:
+        raise ValueError("modules.localimage.comfyui.poll_interval_seconds must be greater than 0")
+    if float(comfyui.get("max_wait_seconds", localimage_config.get("total_timeout_seconds", 900))) <= 0:
+        raise ValueError("modules.localimage.comfyui.max_wait_seconds must be greater than 0")
 
 
 def _validate_tts_config(tts_config: dict[str, Any]) -> None:

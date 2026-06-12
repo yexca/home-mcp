@@ -1,0 +1,80 @@
+server:
+  host: 127.0.0.1
+  port: 8787
+
+artifacts:
+  root: ./tmp/test-localimage-artifacts
+  public_base_url: http://127.0.0.1:8787/artifacts
+  max_artifact_bytes: 1048576
+
+database:
+  path: ./tmp/test-localimage-artifacts/metadata.sqlite3
+
+limits:
+  image_jobs_per_caller_per_day: 20
+
+callers:
+  host_assistant:
+    role: admin
+    token_env: GATEWAY_TOKEN_HOST
+    shared_artifact_read: true
+  role_default:
+    role: role_play
+    token_env: GATEWAY_TOKEN_ROLE_DEFAULT
+    shared_artifact_read: false
+
+modules:
+  localimage:
+    enabled: true
+    provider: comfyui
+    default_size: 1024x1024
+    allowed_sizes:
+      - 1024x1024
+      - 1280x720
+      - 720x1280
+    default_quality: standard
+    allowed_qualities:
+      - draft
+      - standard
+      - high
+    default_style: default
+    allowed_styles:
+      - default
+      - anime
+    default_output_format: png
+    allowed_output_formats:
+      - png
+      - jpeg
+      - webp
+    max_prompt_chars: 100
+    total_timeout_seconds: 5
+    stale_job_grace_seconds: 0
+    quality_presets:
+      draft:
+        steps: 8
+        cfg: 4.5
+        sampler: euler
+      standard:
+        steps: 20
+        cfg: 7.0
+        sampler: dpmpp_2m
+      high:
+        steps: 30
+        cfg: 8.0
+        sampler: dpmpp_2m
+    comfyui:
+      base_url: ${LOCAL_IMAGE_COMFYUI_BASE_URL}
+      allowed_hosts:
+        - 127.0.0.1
+      workflow_path: ./config/comfyui/text_to_image.example.json
+      checkpoint: test-checkpoint.safetensors
+      timeout_seconds: 2
+      poll_interval_seconds: 0.02
+      max_wait_seconds: 5
+      node_mappings:
+        positive_prompt: "6"
+        negative_prompt: "7"
+        latent_image: "5"
+        sampler: "3"
+        save_image: "9"
+        checkpoint_loader: "4"

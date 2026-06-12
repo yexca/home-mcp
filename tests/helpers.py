@@ -37,6 +37,20 @@ def fresh_image_gateway():
     return build_services(settings)
 
 
+def fresh_localimage_gateway():
+    os.environ["CONFIG_PATH"] = "env/localimage.test.config.yaml"
+    os.environ["GATEWAY_TOKEN_HOST"] = "test-host-token"
+    os.environ["GATEWAY_TOKEN_ROLE_DEFAULT"] = "test-role-token"
+    os.environ["ARTIFACT_SIGNING_SECRET"] = "test-artifact-signing-secret"
+    os.environ["LOCAL_IMAGE_COMFYUI_BASE_URL"] = "http://127.0.0.1:1"
+    settings = load_settings()
+    Path("tmp").mkdir(exist_ok=True)
+    root = Path(tempfile.mkdtemp(prefix="gateway-localimage-test-", dir="tmp"))
+    settings.raw["artifacts"]["root"] = str(root)
+    settings.raw["database"]["path"] = str(root / "metadata.sqlite3")
+    return build_services(settings)
+
+
 def fresh_phase4_gateway():
     os.environ["CONFIG_PATH"] = "env/phase4.test.config.yaml"
     os.environ["GATEWAY_TOKEN_HOST"] = "test-host-token"

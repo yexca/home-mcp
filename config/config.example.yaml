@@ -69,6 +69,126 @@ audit:
   log_provider_urls: false
 
 modules:
+  localimage:
+    enabled: false
+    provider: comfyui
+    default_size: ${LOCAL_IMAGE_DEFAULT_SIZE}
+    allowed_sizes:
+      - 512x512
+      - 640x640
+      - 768x768
+      - 896x896
+      - 1024x1024
+      - 1152x1152
+      - 1280x1280
+      - 1536x1536
+      - 2048x2048
+      - 640x480
+      - 480x640
+      - 800x600
+      - 600x800
+      - 768x512
+      - 512x768
+      - 1024x768
+      - 768x1024
+      - 1280x960
+      - 960x1280
+      - 1600x1200
+      - 1200x1600
+      - 1152x768
+      - 768x1152
+      - 1152x896
+      - 896x1152
+      - 1216x832
+      - 832x1216
+      - 1344x768
+      - 768x1344
+      - 1536x864
+      - 864x1536
+      - 1536x1024
+      - 1024x1536
+      - 1920x1280
+      - 1280x1920
+      - 2048x1536
+      - 1536x2048
+      - 2304x1536
+      - 1536x2304
+      - 1280x720
+      - 720x1280
+      - 1366x768
+      - 768x1366
+      - 1280x800
+      - 800x1280
+      - 1440x900
+      - 900x1440
+      - 1600x900
+      - 900x1600
+      - 1680x1050
+      - 1050x1680
+      - 1920x1080
+      - 1080x1920
+      - 1920x1200
+      - 1200x1920
+      - 2048x1152
+      - 1152x2048
+      - 2560x1440
+      - 1440x2560
+      - 2560x1600
+      - 1600x2560
+      - 2560x1080
+      - 1080x2560
+      - 3200x1800
+      - 1800x3200
+      - 3440x1440
+      - 1440x3440
+    default_quality: ${LOCAL_IMAGE_DEFAULT_QUALITY}
+    allowed_qualities:
+      - draft
+      - standard
+      - high
+    default_style: ${LOCAL_IMAGE_DEFAULT_STYLE}
+    allowed_styles:
+      - default
+      - anime
+      - realistic
+      - illustration
+    default_output_format: ${LOCAL_IMAGE_DEFAULT_OUTPUT_FORMAT}
+    allowed_output_formats:
+      - png
+      - jpeg
+      - webp
+    max_prompt_chars: 4000
+    total_timeout_seconds: 900
+    stale_job_grace_seconds: 30
+    quality_presets:
+      draft:
+        steps: 12
+        cfg: 5.5
+        sampler: euler
+      standard:
+        steps: 24
+        cfg: 7.0
+        sampler: dpmpp_2m
+      high:
+        steps: 36
+        cfg: 8.0
+        sampler: dpmpp_2m
+    comfyui:
+      base_url: ${LOCAL_IMAGE_COMFYUI_BASE_URL}
+      allowed_hosts:
+        - ${LOCAL_IMAGE_COMFYUI_ALLOWED_HOST}
+      workflow_path: ${LOCAL_IMAGE_COMFYUI_WORKFLOW_PATH}
+      checkpoint: ${LOCAL_IMAGE_COMFYUI_CHECKPOINT}
+      timeout_seconds: ${LOCAL_IMAGE_COMFYUI_TIMEOUT_SECONDS}
+      poll_interval_seconds: ${LOCAL_IMAGE_COMFYUI_POLL_INTERVAL_SECONDS}
+      max_wait_seconds: ${LOCAL_IMAGE_COMFYUI_MAX_WAIT_SECONDS}
+      node_mappings:
+        positive_prompt: "6"
+        negative_prompt: "7"
+        latent_image: "5"
+        sampler: "3"
+        save_image: "9"
+        checkpoint_loader: "4"
   image:
     enabled: false
     provider: ikun

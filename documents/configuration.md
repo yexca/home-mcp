@@ -304,6 +304,64 @@ not local file paths or public URLs.
 `image/webp`, and also respects `modules.image.allowed_edit_input_mime_types`
 when that list is configured.
 
+## Local Image Module
+
+Enable ComfyUI-backed local generation with:
+
+```yaml
+modules:
+  localimage:
+    enabled: true
+    provider: comfyui
+    default_size: ${LOCAL_IMAGE_DEFAULT_SIZE}
+    allowed_sizes:
+      - 512x512
+      - 640x640
+      - 768x768
+      - 896x896
+      - 1024x1024
+      - 1152x1152
+      - 1280x1280
+      - 1536x1536
+      - 2048x2048
+      - 1024x768
+      - 768x1024
+      - 1536x1024
+      - 1024x1536
+      - 1280x720
+      - 720x1280
+      - 1920x1080
+      - 1080x1920
+      - 2560x1440
+      - 1440x2560
+      - 3200x1800
+      - 1800x3200
+      - 3440x1440
+    default_quality: standard
+    allowed_qualities: [draft, standard, high]
+    default_style: default
+    allowed_styles: [default, anime, realistic, illustration]
+    default_output_format: png
+    allowed_output_formats: [png, jpeg, webp]
+    total_timeout_seconds: 900
+    comfyui:
+      base_url: ${LOCAL_IMAGE_COMFYUI_BASE_URL}
+      allowed_hosts:
+        - ${LOCAL_IMAGE_COMFYUI_ALLOWED_HOST}
+      workflow_path: ${LOCAL_IMAGE_COMFYUI_WORKFLOW_PATH}
+      checkpoint: ${LOCAL_IMAGE_COMFYUI_CHECKPOINT}
+      timeout_seconds: ${LOCAL_IMAGE_COMFYUI_TIMEOUT_SECONDS}
+      poll_interval_seconds: ${LOCAL_IMAGE_COMFYUI_POLL_INTERVAL_SECONDS}
+      max_wait_seconds: ${LOCAL_IMAGE_COMFYUI_MAX_WAIT_SECONDS}
+```
+
+This registers `local_image_generate`, a background job tool that queues a
+configured ComfyUI API workflow, polls `/history/{prompt_id}`, fetches outputs
+through `/view`, stores image artifacts locally, and returns artifact metadata
+only. The MCP schema exposes semantic fields such as prompt, size, quality,
+style, seed, and output format; ComfyUI base URLs, workflow paths, and node ids
+remain configuration-only.
+
 ## TTS Module
 
 Enable with `provider: local_http` or `provider: mock`.
