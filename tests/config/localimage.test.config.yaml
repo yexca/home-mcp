@@ -66,8 +66,11 @@ modules:
       base_url: ${LOCAL_IMAGE_COMFYUI_BASE_URL}
       allowed_hosts:
         - 127.0.0.1
-      workflow_path: ./config/comfyui/text_to_image.example.json
+      workflow_path: ./config/comfyui/sdxl_text_to_image.example.json
       checkpoint: test-checkpoint.safetensors
+      unet_name: ""
+      clip_name: ""
+      vae_name: ""
       timeout_seconds: 2
       poll_interval_seconds: 0.02
       max_wait_seconds: 5

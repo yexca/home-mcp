@@ -92,6 +92,43 @@ class LocalImageGenerateTests(unittest.TestCase):
         self.assertEqual(prepared.workflow["4"]["inputs"]["ckpt_name"], "test-checkpoint.safetensors")
         self.assertEqual(prepared.workflow["9"]["inputs"]["filename_prefix"], "localimage_webp")
 
+    def test_prepare_injects_anima_workflow_values(self) -> None:
+        services, _, _ = fresh_localimage_gateway()
+        config = services.config.raw["modules"]["localimage"]
+        config["comfyui"]["workflow_path"] = "./config/comfyui/anima_text_to_image.example.json"
+        config["comfyui"]["checkpoint"] = ""
+        config["comfyui"]["unet_name"] = "miaomiaoRealskin_anima10.safetensors"
+        config["comfyui"]["clip_name"] = "miaomiaoRealskin_anima10_txt.safetensors"
+        config["comfyui"]["vae_name"] = "qwen_image_vae.safetensors"
+        config["comfyui"]["node_mappings"] = {
+            "positive_prompt": "11",
+            "negative_prompt": "12",
+            "latent_image": "28",
+            "sampler": "19",
+            "save_image": "46",
+        }
+
+        prepared = prepare_local_image_generate(
+            {
+                "prompt": "draw an anime portrait",
+                "negative_prompt": "watermark",
+                "size": "720x1280",
+                "quality": "standard",
+                "seed": 99,
+            },
+            make_context(services),
+        )
+
+        self.assertEqual(prepared.workflow["11"]["inputs"]["text"], "draw an anime portrait")
+        self.assertEqual(prepared.workflow["12"]["inputs"]["text"], "watermark")
+        self.assertEqual(prepared.workflow["28"]["inputs"]["width"], 720)
+        self.assertEqual(prepared.workflow["28"]["inputs"]["height"], 1280)
+        self.assertEqual(prepared.workflow["19"]["inputs"]["seed"], 99)
+        self.assertEqual(prepared.workflow["44"]["inputs"]["unet_name"], "miaomiaoRealskin_anima10.safetensors")
+        self.assertEqual(prepared.workflow["63"]["inputs"]["clip_name"], "miaomiaoRealskin_anima10_txt.safetensors")
+        self.assertEqual(prepared.workflow["15"]["inputs"]["vae_name"], "qwen_image_vae.safetensors")
+        self.assertEqual(prepared.workflow["46"]["inputs"]["filename_prefix"], "localimage_png")
+
     def test_service_persists_comfyui_output_as_artifact(self) -> None:
         services, _, _ = fresh_localimage_gateway()
         server = ThreadingHTTPServer(("127.0.0.1", 0), ComfyUIHTTPRequestHandler)

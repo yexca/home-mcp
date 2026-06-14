@@ -179,6 +179,9 @@ modules:
         - ${LOCAL_IMAGE_COMFYUI_ALLOWED_HOST}
       workflow_path: ${LOCAL_IMAGE_COMFYUI_WORKFLOW_PATH}
       checkpoint: ${LOCAL_IMAGE_COMFYUI_CHECKPOINT}
+      unet_name: ${LOCAL_IMAGE_COMFYUI_UNET_NAME}
+      clip_name: ${LOCAL_IMAGE_COMFYUI_CLIP_NAME}
+      vae_name: ${LOCAL_IMAGE_COMFYUI_VAE_NAME}
       timeout_seconds: ${LOCAL_IMAGE_COMFYUI_TIMEOUT_SECONDS}
       poll_interval_seconds: ${LOCAL_IMAGE_COMFYUI_POLL_INTERVAL_SECONDS}
       max_wait_seconds: ${LOCAL_IMAGE_COMFYUI_MAX_WAIT_SECONDS}

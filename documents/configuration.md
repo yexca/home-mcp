@@ -350,6 +350,9 @@ modules:
         - ${LOCAL_IMAGE_COMFYUI_ALLOWED_HOST}
       workflow_path: ${LOCAL_IMAGE_COMFYUI_WORKFLOW_PATH}
       checkpoint: ${LOCAL_IMAGE_COMFYUI_CHECKPOINT}
+      unet_name: ${LOCAL_IMAGE_COMFYUI_UNET_NAME}
+      clip_name: ${LOCAL_IMAGE_COMFYUI_CLIP_NAME}
+      vae_name: ${LOCAL_IMAGE_COMFYUI_VAE_NAME}
       timeout_seconds: ${LOCAL_IMAGE_COMFYUI_TIMEOUT_SECONDS}
       poll_interval_seconds: ${LOCAL_IMAGE_COMFYUI_POLL_INTERVAL_SECONDS}
       max_wait_seconds: ${LOCAL_IMAGE_COMFYUI_MAX_WAIT_SECONDS}
@@ -361,6 +364,22 @@ through `/view`, stores image artifacts locally, and returns artifact metadata
 only. The MCP schema exposes semantic fields such as prompt, size, quality,
 style, seed, and output format; ComfyUI base URLs, workflow paths, and node ids
 remain configuration-only.
+
+The default example workflow is `./config/comfyui/sdxl_text_to_image.example.json`.
+To switch to the Anima workflow exported from `sample/anima.json`, set these
+values in `.env`:
+
+```dotenv
+LOCAL_IMAGE_COMFYUI_WORKFLOW_PATH=./config/comfyui/anima_text_to_image.example.json
+LOCAL_IMAGE_COMFYUI_CHECKPOINT=
+LOCAL_IMAGE_COMFYUI_UNET_NAME=miaomiaoRealskin_anima10.safetensors
+LOCAL_IMAGE_COMFYUI_CLIP_NAME=miaomiaoRealskin_anima10_txt.safetensors
+LOCAL_IMAGE_COMFYUI_VAE_NAME=qwen_image_vae.safetensors
+```
+
+`checkpoint` is used by SDXL-style `CheckpointLoaderSimple` workflows.
+`unet_name`, `clip_name`, and `vae_name` are used by split-loader workflows
+such as Anima.
 
 ## TTS Module
 

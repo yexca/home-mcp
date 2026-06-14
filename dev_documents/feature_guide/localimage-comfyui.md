@@ -118,7 +118,7 @@ modules:
     total_timeout_seconds: 900
     comfyui:
       base_url: http://192.0.2.10:8188
-      workflow_path: ./config/comfyui/text_to_image.json
+      workflow_path: ./config/comfyui/sdxl_text_to_image.example.json
       timeout_seconds: 30
       poll_interval_seconds: 1
       max_wait_seconds: 900

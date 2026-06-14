@@ -191,7 +191,7 @@ def inject_workflow_values(
 ) -> dict[str, Any]:
     mappings = config.get("comfyui", {}).get("node_mappings") or {}
     _inject_prompt(workflow, mappings, prompt, negative_prompt)
-    _inject_checkpoint(workflow, config, mappings)
+    _inject_model_loaders(workflow, config, mappings)
     _inject_dimensions(workflow, mappings, width, height)
     _inject_sampler(workflow, mappings, seed, quality_preset)
     _inject_save_image(workflow, mappings, output_format)
@@ -246,33 +246,51 @@ def _persist_local_image_outputs(
 
 
 def _inject_prompt(workflow: dict[str, Any], mappings: dict[str, Any], prompt: str, negative_prompt: str) -> None:
-    positive = mappings.get("positive_prompt")
-    negative = mappings.get("negative_prompt")
+    text_nodes = _nodes_by_class(workflow, "CLIPTextEncode")
+    positive = _mapped_node(workflow, mappings, "positive_prompt") or (text_nodes[0] if text_nodes else None)
+    negative = _mapped_node(workflow, mappings, "negative_prompt") or (text_nodes[1] if len(text_nodes) > 1 else None)
     if positive:
         _set_node_input(workflow, str(positive), "text", prompt)
     if negative:
         _set_node_input(workflow, str(negative), "text", negative_prompt)
-    if positive or negative:
-        return
-    text_nodes = _nodes_by_class(workflow, "CLIPTextEncode")
-    if text_nodes:
-        _set_node_input(workflow, text_nodes[0], "text", prompt)
-    if len(text_nodes) > 1:
-        _set_node_input(workflow, text_nodes[1], "text", negative_prompt)
 
 
-def _inject_checkpoint(workflow: dict[str, Any], config: dict[str, Any], mappings: dict[str, Any]) -> None:
-    checkpoint = config.get("comfyui", {}).get("checkpoint")
-    if not isinstance(checkpoint, str) or not checkpoint.strip():
+def _inject_model_loaders(workflow: dict[str, Any], config: dict[str, Any], mappings: dict[str, Any]) -> None:
+    comfyui = config.get("comfyui", {})
+    _inject_loader_input(
+        workflow,
+        _mapped_node(workflow, mappings, "checkpoint_loader") or _first_node_by_class(workflow, "CheckpointLoaderSimple"),
+        "ckpt_name",
+        comfyui.get("checkpoint"),
+    )
+    _inject_loader_input(
+        workflow,
+        _mapped_node(workflow, mappings, "unet_loader") or _first_node_by_class(workflow, "UNETLoader"),
+        "unet_name",
+        comfyui.get("unet_name"),
+    )
+    _inject_loader_input(
+        workflow,
+        _mapped_node(workflow, mappings, "clip_loader") or _first_node_by_class(workflow, "CLIPLoader"),
+        "clip_name",
+        comfyui.get("clip_name"),
+    )
+    _inject_loader_input(
+        workflow,
+        _mapped_node(workflow, mappings, "vae_loader") or _first_node_by_class(workflow, "VAELoader"),
+        "vae_name",
+        comfyui.get("vae_name"),
+    )
+
+
+def _inject_loader_input(workflow: dict[str, Any], node_id: str | None, field: str, value: Any) -> None:
+    if not node_id or not isinstance(value, str) or not value.strip():
         return
-    checkpoint_node = mappings.get("checkpoint_loader") or _first_node_by_class(workflow, "CheckpointLoaderSimple")
-    if not checkpoint_node:
-        return
-    _set_node_input(workflow, str(checkpoint_node), "ckpt_name", checkpoint.strip())
+    _set_node_input(workflow, str(node_id), field, value.strip())
 
 
 def _inject_dimensions(workflow: dict[str, Any], mappings: dict[str, Any], width: int, height: int) -> None:
-    latent_node = mappings.get("latent_image") or _first_node_by_class(workflow, "EmptyLatentImage")
+    latent_node = _mapped_node(workflow, mappings, "latent_image") or _first_node_by_class(workflow, "EmptyLatentImage")
     if not latent_node:
         return
     _set_node_input(workflow, str(latent_node), "width", width)
@@ -282,7 +300,7 @@ def _inject_dimensions(workflow: dict[str, Any], mappings: dict[str, Any], width
 
 
 def _inject_sampler(workflow: dict[str, Any], mappings: dict[str, Any], seed: int, quality_preset: dict[str, Any]) -> None:
-    sampler_node = mappings.get("sampler") or _first_node_by_class(workflow, "KSampler")
+    sampler_node = _mapped_node(workflow, mappings, "sampler") or _first_node_by_class(workflow, "KSampler")
     if not sampler_node:
         return
     _set_node_input(workflow, str(sampler_node), "seed", seed)
@@ -295,7 +313,7 @@ def _inject_sampler(workflow: dict[str, Any], mappings: dict[str, Any], seed: in
 
 
 def _inject_save_image(workflow: dict[str, Any], mappings: dict[str, Any], output_format: str) -> None:
-    save_node = mappings.get("save_image") or _first_node_by_class(workflow, "SaveImage")
+    save_node = _mapped_node(workflow, mappings, "save_image") or _first_node_by_class(workflow, "SaveImage")
     if not save_node:
         return
     _set_node_input(workflow, str(save_node), "filename_prefix", f"localimage_{output_format}")
@@ -320,6 +338,13 @@ def _set_node_input(workflow: dict[str, Any], node_id: str, field: str, value: A
     if inputs is None:
         raise GatewayError(INTERNAL_ERROR, "local image workflow node mapping is invalid", retryable=False)
     inputs[field] = value
+
+
+def _mapped_node(workflow: dict[str, Any], mappings: dict[str, Any], key: str) -> str | None:
+    node_id = mappings.get(key)
+    if isinstance(node_id, (str, int)) and str(node_id) in workflow:
+        return str(node_id)
+    return None
 
 
 def _node_inputs(workflow: dict[str, Any], node_id: str) -> dict[str, Any] | None:

@@ -1,0 +1,74 @@
+{
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["19", 0],
+      "vae": ["15", 0]
+    }
+  },
+  "11": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": ["63", 0]
+    }
+  },
+  "12": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": ["63", 0]
+    }
+  },
+  "15": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    }
+  },
+  "19": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 1,
+      "steps": 30,
+      "cfg": 4.0,
+      "sampler_name": "er_sde",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": ["44", 0],
+      "positive": ["11", 0],
+      "negative": ["12", 0],
+      "latent_image": ["28", 0]
+    }
+  },
+  "28": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 1080,
+      "height": 1920,
+      "batch_size": 1
+    }
+  },
+  "44": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "miaomiaoRealskin_anima10.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "46": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "localimage",
+      "images": ["8", 0]
+    }
+  },
+  "63": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "miaomiaoRealskin_anima10_txt.safetensors",
+      "type": "stable_diffusion",
+      "device": "default"
+    }
+  }
+}
