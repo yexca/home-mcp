@@ -341,6 +341,28 @@ The audio artifact must be readable by the caller, have kind `audio`, and use an
 allowed audio MIME type. The service uploads it to Matrix media, then sends an
 `m.audio` message.
 
+### `matrix_send_image`
+
+Risk: `high`; creates a job.
+
+Input:
+
+```json
+{
+  "room_id": "!room:example.org",
+  "image_artifact_id": "art_...",
+  "body": "image.png"
+}
+```
+
+The image artifact must be readable by the caller, have kind `image`, and use an
+allowed image MIME type. By default Matrix image sending accepts `image/png`,
+`image/jpeg`, and `image/webp`; override with
+`modules.matrix.allowed_image_mime_types` when needed. The service uploads the
+artifact to Matrix media, then sends an `m.image` message. If artifact metadata
+contains positive integer `width` and `height` fields, they are included in the
+Matrix image `info`.
+
 ## Printer Tools
 
 Registered only when `modules.printer.enabled` is true.

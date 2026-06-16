@@ -182,7 +182,7 @@ Important behavior:
 - `health_check` is always allowed.
 - Anonymous callers may only call tools listed in `anonymous_allowed_tools`.
 - High-risk tools need `high_risk_allowed_callers`.
-- `matrix_send_text` and `matrix_send_audio` require an allowlisted `room_id`.
+- `matrix_send_text`, `matrix_send_audio`, and `matrix_send_image` require an allowlisted `room_id`.
 - `printer_print_file` requires an allowlisted `printer_id`.
 
 Example high-risk allowlist:
@@ -193,6 +193,7 @@ policy:
     host_assistant:
       - matrix_send_text
       - matrix_send_audio
+      - matrix_send_image
       - printer_print_file
 ```
 
@@ -425,11 +426,18 @@ modules:
     homeserver: ${MATRIX_HOMESERVER}
     access_token: ${MATRIX_ACCESS_TOKEN}
     timeout_seconds: 30
+    allowed_image_mime_types:
+      - image/png
+      - image/jpeg
+      - image/webp
 ```
 
 Matrix tools are high risk. Configure room allowlists through
 `policy.allowed_matrix_rooms` or `modules.matrix.allowed_rooms`, and configure
 high-risk caller access in `policy.high_risk_allowed_callers`.
+`matrix_send_image` accepts readable image artifacts whose MIME type appears in
+`modules.matrix.allowed_image_mime_types`; when omitted, it defaults to
+`image/png`, `image/jpeg`, and `image/webp`.
 
 ## Printer Module
 

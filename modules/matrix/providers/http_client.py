@@ -73,6 +73,30 @@ class MatrixHttpClient:
         }
         return self.send_event(room_id=room_id, event_type="m.room.message", content=content)
 
+    def send_image(
+        self,
+        *,
+        room_id: str,
+        body: str,
+        content_uri: str,
+        mime_type: str,
+        size_bytes: int,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> MatrixSendResponse:
+        info: dict[str, Any] = {"mimetype": mime_type, "size": size_bytes}
+        if width is not None:
+            info["w"] = width
+        if height is not None:
+            info["h"] = height
+        content = {
+            "msgtype": "m.image",
+            "body": body,
+            "url": content_uri,
+            "info": info,
+        }
+        return self.send_event(room_id=room_id, event_type="m.room.message", content=content)
+
     def send_event(self, *, room_id: str, event_type: str, content: dict[str, Any]) -> MatrixSendResponse:
         txn_id = uuid.uuid4().hex
         encoded_room = parse.quote(room_id, safe="")

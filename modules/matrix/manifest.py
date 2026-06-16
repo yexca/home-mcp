@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from app.config import Settings
-from modules.matrix.schemas import MATRIX_SEND_AUDIO_INPUT_SCHEMA, MATRIX_SEND_OUTPUT_SCHEMA, MATRIX_SEND_TEXT_INPUT_SCHEMA
-from modules.matrix.service import matrix_send_audio, matrix_send_text
+from modules.matrix.schemas import (
+    MATRIX_SEND_AUDIO_INPUT_SCHEMA,
+    MATRIX_SEND_IMAGE_INPUT_SCHEMA,
+    MATRIX_SEND_OUTPUT_SCHEMA,
+    MATRIX_SEND_TEXT_INPUT_SCHEMA,
+)
+from modules.matrix.service import matrix_send_audio, matrix_send_image, matrix_send_text
 from tools.registry import ToolDefinition, ToolRegistry
 
 
@@ -31,6 +36,18 @@ def register_matrix_tools(registry: ToolRegistry, settings: Settings) -> None:
             output_schema=MATRIX_SEND_OUTPUT_SCHEMA,
             risk_level="high",
             handler=matrix_send_audio,
+            creates_job=True,
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="matrix_send_image",
+            title="Matrix Send Image",
+            description="Upload an image artifact and send it to an allowlisted Matrix room.",
+            input_schema=MATRIX_SEND_IMAGE_INPUT_SCHEMA,
+            output_schema=MATRIX_SEND_OUTPUT_SCHEMA,
+            risk_level="high",
+            handler=matrix_send_image,
             creates_job=True,
         )
     )

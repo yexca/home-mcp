@@ -20,6 +20,7 @@ from tests.helpers import fresh_phase4_gateway
 from transport.request_context import RequestContext
 
 AUDIO_BYTES = b"RIFFphase4-audio"
+IMAGE_BYTES = b"\x89PNG\r\n\x1a\nphase4-image"
 
 
 def make_context(services, caller: CallerIdentity | None = None) -> RequestContext:
@@ -429,6 +430,29 @@ class MatrixProviderAndWorkflowTests(unittest.TestCase):
         self.assertEqual(send_body["msgtype"], "m.audio")
         self.assertEqual(send_body["url"], "mxc://example.test/media")
 
+    def test_matrix_http_client_uploads_and_sends_image(self) -> None:
+        client = MatrixHttpClient(homeserver=self.homeserver, access_token="test-matrix-token", timeout_seconds=2)
+        upload = client.upload_media(data=IMAGE_BYTES, mime_type="image/png", filename="test.png")
+        sent = client.send_image(
+            room_id="!allowed:example.test",
+            body="test.png",
+            content_uri=upload.content_uri,
+            mime_type="image/png",
+            size_bytes=len(IMAGE_BYTES),
+            width=640,
+            height=480,
+        )
+
+        self.assertEqual(sent.event_id, "$event123")
+        self.assertEqual(MatrixHTTPRequestHandler.requests[0]["content_type"], "image/png")
+        send_body = json.loads(MatrixHTTPRequestHandler.requests[1]["body"].decode("utf-8"))
+        self.assertEqual(send_body["msgtype"], "m.image")
+        self.assertEqual(send_body["url"], "mxc://example.test/media")
+        self.assertEqual(send_body["info"]["mimetype"], "image/png")
+        self.assertEqual(send_body["info"]["size"], len(IMAGE_BYTES))
+        self.assertEqual(send_body["info"]["w"], 640)
+        self.assertEqual(send_body["info"]["h"], 480)
+
     def test_dispatcher_room_allowlist_audio_permissions_and_secret_redaction(self) -> None:
         services, _, dispatcher = fresh_phase4_gateway()
         services.config.raw["modules"]["matrix"]["homeserver"] = self.homeserver
@@ -495,6 +519,62 @@ class MatrixProviderAndWorkflowTests(unittest.TestCase):
         self.assertEqual(bad_mime["error"]["code"], UNSUPPORTED_MEDIA_TYPE)
         self.assertNotIn("test-matrix-token", str(sent))
         self.assertNotIn("test-matrix-token", str([tuple(row) for row in rows]))
+
+    def test_dispatcher_sends_image_artifact_to_matrix(self) -> None:
+        services, _, dispatcher = fresh_phase4_gateway()
+        services.config.raw["modules"]["matrix"]["homeserver"] = self.homeserver
+        image = services.artifacts.create_from_bytes(
+            kind="image",
+            mime_type="image/png",
+            extension="png",
+            data=IMAGE_BYTES,
+            owner="host_assistant",
+            source_tool="test",
+            metadata={"width": 320, "height": 240},
+        )
+        document = services.artifacts.create_from_bytes(
+            kind="document",
+            mime_type="text/plain",
+            extension="txt",
+            data=b"text",
+            owner="host_assistant",
+            source_tool="test",
+        )
+
+        sent = asyncio.run(
+            dispatcher.dispatch(
+                "matrix_send_image",
+                {"room_id": "!allowed:example.test", "image_artifact_id": image.id, "body": "preview.png"},
+                authorization="Bearer test-host-token",
+            )
+        )
+        bad_mime = asyncio.run(
+            dispatcher.dispatch(
+                "matrix_send_image",
+                {"room_id": "!allowed:example.test", "image_artifact_id": document.id},
+                authorization="Bearer test-host-token",
+            )
+        )
+        bad_room = asyncio.run(
+            dispatcher.dispatch(
+                "matrix_send_image",
+                {"room_id": "!denied:example.test", "image_artifact_id": image.id},
+                authorization="Bearer test-role-token",
+            )
+        )
+        send_body = json.loads(MatrixHTTPRequestHandler.requests[1]["body"].decode("utf-8"))
+
+        self.assertTrue(sent["ok"])
+        self.assertEqual(sent["event_id"], "$event123")
+        self.assertEqual(sent["media"]["artifact_id"], image.id)
+        self.assertEqual(sent["media"]["width"], 320)
+        self.assertEqual(sent["media"]["height"], 240)
+        self.assertEqual(send_body["msgtype"], "m.image")
+        self.assertEqual(send_body["body"], "preview.png")
+        self.assertEqual(send_body["info"]["w"], 320)
+        self.assertEqual(send_body["info"]["h"], 240)
+        self.assertEqual(bad_mime["error"]["code"], UNSUPPORTED_MEDIA_TYPE)
+        self.assertEqual(bad_room["error"]["code"], POLICY_DENIED)
 
 
 if __name__ == "__main__":

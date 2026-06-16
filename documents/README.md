@@ -31,7 +31,7 @@ tree, not the historical phase plans.
 | --- | --- | --- | --- |
 | `image` | `image_generate`, `image_edit` | disabled | iKun/OpenAI-compatible image API |
 | `tts` | `tts_synthesize` | disabled | local HTTP TTS or mock provider |
-| `matrix` | `matrix_send_text`, `matrix_send_audio` | disabled | Matrix Client/Media HTTP APIs |
+| `matrix` | `matrix_send_text`, `matrix_send_audio`, `matrix_send_image` | disabled | Matrix Client/Media HTTP APIs |
 | `printer` | `printer_list`, `printer_print_file` | disabled | local HTTP printer bridge |
 
 The gateway also always registers `health_check`, `artifact_get`, and

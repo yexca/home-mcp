@@ -72,7 +72,7 @@ class PolicyEngine:
         anonymous_allowed = set(self.settings.policy.get("anonymous_allowed_tools", []))
         if caller.caller_id == "anonymous" and tool_name not in anonymous_allowed:
             return PolicyDecision("deny", "anonymous caller is not allowed for this tool", ("anonymous",))
-        if tool_name in {"matrix_send_text", "matrix_send_audio"}:
+        if tool_name in {"matrix_send_text", "matrix_send_audio", "matrix_send_image"}:
             allowed_rooms = set(
                 self.settings.policy.get("allowed_matrix_rooms", [])
                 or self.settings.modules.get("matrix", {}).get("allowed_rooms", [])

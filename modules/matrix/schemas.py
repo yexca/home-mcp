@@ -21,6 +21,17 @@ MATRIX_SEND_AUDIO_INPUT_SCHEMA = {
     "additionalProperties": False,
 }
 
+MATRIX_SEND_IMAGE_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "room_id": {"type": "string", "minLength": 1},
+        "image_artifact_id": {"type": "string", "minLength": 1},
+        "body": {"type": "string", "maxLength": 512},
+    },
+    "required": ["room_id", "image_artifact_id"],
+    "additionalProperties": False,
+}
+
 MATRIX_SEND_OUTPUT_SCHEMA = {
     "type": "object",
     "properties": {

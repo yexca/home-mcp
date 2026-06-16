@@ -61,6 +61,10 @@ policy:
     - audio/ogg
     - audio/mpeg
     - audio/wav
+  image_mime_types:
+    - image/png
+    - image/jpeg
+    - image/webp
 
 audit:
   sink: sqlite
@@ -273,6 +277,10 @@ modules:
     access_token: ${MATRIX_ACCESS_TOKEN}
     timeout_seconds: 30
     max_text_chars: 4000
+    allowed_image_mime_types:
+      - image/png
+      - image/jpeg
+      - image/webp
   printer:
     enabled: false
     provider: bridge_http

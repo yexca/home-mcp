@@ -33,6 +33,7 @@ policy:
   high_risk_allowed_callers:
     role_default:
       - matrix_send_audio
+      - matrix_send_image
   audio_mime_types:
     - audio/ogg
     - audio/mpeg
@@ -71,3 +72,7 @@ modules:
     access_token: ${MATRIX_ACCESS_TOKEN}
     timeout_seconds: 2
     max_text_chars: 64
+    allowed_image_mime_types:
+      - image/png
+      - image/jpeg
+      - image/webp
