@@ -5,6 +5,7 @@ __pycache__/
 .coverage
 .venv/
 .env
+.env.agent.*
 artifacts/
 tmp*/
 *.sqlite3
@@ -14,3 +15,4 @@ tmp*/
 sample/
 config/config.yaml
 config/local.config.yaml
+config/agent/config.agent.*.yaml

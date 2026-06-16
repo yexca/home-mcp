@@ -22,6 +22,7 @@ _MODULE_SWITCH_ENV_VARS = (
     "TTS_MODULE_ENABLED",
     "MATRIX_MODULE_ENABLED",
     "PRINTER_MODULE_ENABLED",
+    "ENABLED_AGENTS",
 )
 
 
@@ -258,6 +259,211 @@ class ConfigTests(unittest.TestCase):
             os.environ.pop("TEST_SERVER_HOST", None)
             if previous_host is not None:
                 os.environ["TEST_SERVER_HOST"] = previous_host
+            if old_config_path is not None:
+                os.environ["CONFIG_PATH"] = old_config_path
+
+    def test_enabled_agents_merge_agent_env_and_config_fragments(self) -> None:
+        old_cwd = Path.cwd()
+        old_config_path = os.environ.pop("CONFIG_PATH", None)
+        previous = {
+            "ENABLED_AGENTS": os.environ.pop("ENABLED_AGENTS", None),
+            "GATEWAY_TOKEN_AGENT1": os.environ.pop("GATEWAY_TOKEN_AGENT1", None),
+            "AGENT1_MATRIX_ACCESS_TOKEN": os.environ.pop("AGENT1_MATRIX_ACCESS_TOKEN", None),
+            "MATRIX_MODULE_ENABLED": os.environ.pop("MATRIX_MODULE_ENABLED", None),
+        }
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "config" / "agent").mkdir(parents=True)
+                (root / ".env").write_text("ENABLED_AGENTS=agent1\n", encoding="utf-8")
+                (root / ".env.agent.agent1").write_text(
+                    "\n".join(
+                        [
+                            "GATEWAY_TOKEN_AGENT1=test-agent-token",
+                            "AGENT1_MATRIX_ACCESS_TOKEN=test-matrix-token",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                (root / "config" / "agent" / "config.agent.agent1.yaml").write_text(
+                    "\n".join(
+                        [
+                            "caller:",
+                            "  role: role_play",
+                            "  token_env: GATEWAY_TOKEN_AGENT1",
+                            "matrix:",
+                            "  enabled: true",
+                            "  account: agent1",
+                            "  homeserver_env: MATRIX_HOMESERVER",
+                            "  access_token_env: AGENT1_MATRIX_ACCESS_TOKEN",
+                            "high_risk_tools:",
+                            "  - matrix_send_text",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                (root / ".env.example").write_text("MATRIX_HOMESERVER=http://matrix.test\n", encoding="utf-8")
+                (root / "config" / "config.example.yaml").write_text(
+                    "\n".join(
+                        [
+                            "server:",
+                            "  host: 127.0.0.1",
+                            "  port: 8787",
+                            "artifacts:",
+                            "  root: ./artifacts",
+                            "database:",
+                            "  path: ./artifacts/metadata.sqlite3",
+                            "limits: {}",
+                            "callers:",
+                            "  host_assistant:",
+                            "    role: admin",
+                            "    token_env: GATEWAY_TOKEN_HOST",
+                            "policy:",
+                            "  high_risk_allowed_callers: {}",
+                            "modules:",
+                            "  matrix:",
+                            "    enabled: false",
+                            "    homeserver: ${MATRIX_HOMESERVER}",
+                            "    access_token: ''",
+                            "    timeout_seconds: 2",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                os.chdir(root)
+                try:
+                    settings = load_settings()
+                    self.assertIn("agent1", settings.callers)
+                    self.assertEqual(settings.callers["agent1"]["token_env"], "GATEWAY_TOKEN_AGENT1")
+                    self.assertTrue(settings.modules["matrix"]["enabled"])
+                    self.assertEqual(settings.modules["matrix"]["caller_accounts"]["agent1"], "agent1")
+                    self.assertEqual(settings.modules["matrix"]["accounts"]["agent1"]["access_token"], "test-matrix-token")
+                    self.assertEqual(settings.policy["high_risk_allowed_callers"]["agent1"], ["matrix_send_text"])
+                    self.assertEqual(os.environ["GATEWAY_TOKEN_AGENT1"], "test-agent-token")
+                finally:
+                    os.chdir(old_cwd)
+        finally:
+            os.chdir(old_cwd)
+            _restore_env(previous)
+            if old_config_path is not None:
+                os.environ["CONFIG_PATH"] = old_config_path
+
+    def test_root_env_module_switch_overrides_agent_matrix_enablement(self) -> None:
+        old_cwd = Path.cwd()
+        old_config_path = os.environ.pop("CONFIG_PATH", None)
+        previous = {
+            "ENABLED_AGENTS": os.environ.pop("ENABLED_AGENTS", None),
+            "AGENT1_MATRIX_ACCESS_TOKEN": os.environ.pop("AGENT1_MATRIX_ACCESS_TOKEN", None),
+            "MATRIX_MODULE_ENABLED": os.environ.pop("MATRIX_MODULE_ENABLED", None),
+        }
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "config" / "agent").mkdir(parents=True)
+                (root / ".env").write_text(
+                    "\n".join(["ENABLED_AGENTS=agent1", "MATRIX_MODULE_ENABLED=false"]),
+                    encoding="utf-8",
+                )
+                (root / ".env.agent.agent1").write_text("AGENT1_MATRIX_ACCESS_TOKEN=test-matrix-token\n", encoding="utf-8")
+                (root / "config" / "agent" / "config.agent.agent1.yaml").write_text(
+                    "\n".join(
+                        [
+                            "matrix:",
+                            "  enabled: true",
+                            "  access_token_env: AGENT1_MATRIX_ACCESS_TOKEN",
+                            "high_risk_tools:",
+                            "  - matrix_send_text",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                (root / "config" / "config.example.yaml").write_text(
+                    "\n".join(
+                        [
+                            "server: {host: 127.0.0.1, port: 8787}",
+                            "artifacts: {root: ./artifacts}",
+                            "database: {path: ./artifacts/metadata.sqlite3}",
+                            "limits: {}",
+                            "modules:",
+                            "  matrix:",
+                            "    enabled: false",
+                            "    homeserver: http://matrix.test",
+                            "    access_token: ''",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                os.chdir(root)
+                try:
+                    settings = load_settings()
+                    self.assertFalse(settings.modules["matrix"]["enabled"])
+                finally:
+                    os.chdir(old_cwd)
+        finally:
+            os.chdir(old_cwd)
+            _restore_env(previous)
+            if old_config_path is not None:
+                os.environ["CONFIG_PATH"] = old_config_path
+
+    def test_enabled_agents_prunes_legacy_disabled_agent_runtime_config(self) -> None:
+        old_cwd = Path.cwd()
+        old_config_path = os.environ.pop("CONFIG_PATH", None)
+        previous = {
+            "ENABLED_AGENTS": os.environ.pop("ENABLED_AGENTS", None),
+            "AGENT1_MATRIX_ACCESS_TOKEN": os.environ.pop("AGENT1_MATRIX_ACCESS_TOKEN", None),
+        }
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "config" / "agent").mkdir(parents=True)
+                (root / ".env").write_text("ENABLED_AGENTS=agent1\n", encoding="utf-8")
+                (root / ".env.agent.agent1").write_text("AGENT1_MATRIX_ACCESS_TOKEN=test-matrix-token\n", encoding="utf-8")
+                (root / "config" / "agent" / "config.agent.agent1.yaml").write_text(
+                    "matrix:\n  enabled: true\n  access_token_env: AGENT1_MATRIX_ACCESS_TOKEN\n",
+                    encoding="utf-8",
+                )
+                (root / "config" / "config.example.yaml").write_text(
+                    "\n".join(
+                        [
+                            "server: {host: 127.0.0.1, port: 8787}",
+                            "artifacts: {root: ./artifacts}",
+                            "database: {path: ./artifacts/metadata.sqlite3}",
+                            "limits: {}",
+                            "callers:",
+                            "  host_assistant: {role: admin, token_env: GATEWAY_TOKEN_HOST}",
+                            "  role_default: {role: role_play, token_env: GATEWAY_TOKEN_ROLE_DEFAULT}",
+                            "  agent2: {role: role_play, token_env: GATEWAY_TOKEN_AGENT2}",
+                            "policy:",
+                            "  high_risk_allowed_callers:",
+                            "    agent2: [matrix_send_text]",
+                            "modules:",
+                            "  matrix:",
+                            "    enabled: false",
+                            "    homeserver: http://matrix.test",
+                            "    access_token: ''",
+                            "    caller_accounts:",
+                            "      role_default: agent2",
+                            "      agent2: agent2",
+                            "    accounts:",
+                            "      agent2:",
+                            "        access_token: old-token",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                os.chdir(root)
+                try:
+                    settings = load_settings()
+                    self.assertIn("role_default", settings.callers)
+                    self.assertNotIn("agent2", settings.callers)
+                    self.assertNotIn("agent2", settings.policy["high_risk_allowed_callers"])
+                    self.assertNotIn("role_default", settings.modules["matrix"]["caller_accounts"])
+                    self.assertNotIn("agent2", settings.modules["matrix"]["accounts"])
+                finally:
+                    os.chdir(old_cwd)
+        finally:
+            os.chdir(old_cwd)
+            _restore_env(previous)
             if old_config_path is not None:
                 os.environ["CONFIG_PATH"] = old_config_path
 

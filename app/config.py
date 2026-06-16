@@ -74,6 +74,8 @@ _ENV_VALUE_OVERRIDES: tuple[tuple[str, tuple[str, ...], Callable[[str], Any]], .
 @dataclass(frozen=True, slots=True)
 class EnvDefaults:
     explicit_keys: set[str] = field(default_factory=set)
+    enabled_agents_declared: bool = False
+    enabled_agents: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +124,7 @@ class Settings:
 def load_settings(config_path: str | None = None) -> Settings:
     env_defaults = _load_env_defaults()
     data = _load_config_with_defaults(config_path)
+    _apply_agent_config_fragments(data, env_defaults)
     data = _substitute_env(data, _load_env_template_values())
     _apply_env_overrides(data, env_defaults)
     _validate(data)
@@ -132,7 +135,15 @@ def _load_env_defaults() -> EnvDefaults:
     initial_keys = set(os.environ)
     dotenv_declared_keys = _read_dotenv_keys(Path(".env"))
     dotenv_keys = _load_dotenv(Path(".env"))
-    return EnvDefaults(explicit_keys=initial_keys | dotenv_declared_keys | dotenv_keys)
+    root_explicit_keys = initial_keys | dotenv_declared_keys | dotenv_keys
+    enabled_agents_declared = "ENABLED_AGENTS" in root_explicit_keys
+    enabled_agents = _parse_enabled_agents(os.getenv("ENABLED_AGENTS", "")) if enabled_agents_declared else ()
+    agent_declared_keys, agent_loaded_keys = _load_agent_dotenvs(enabled_agents)
+    return EnvDefaults(
+        explicit_keys=root_explicit_keys,
+        enabled_agents_declared=enabled_agents_declared,
+        enabled_agents=enabled_agents,
+    )
 
 
 def _load_config_with_defaults(config_path: str | None = None) -> dict[str, Any]:
@@ -146,6 +157,182 @@ def _load_config_with_defaults(config_path: str | None = None) -> dict[str, Any]
 def _default_user_config_path() -> str | None:
     path = Path("config/config.yaml")
     return str(path) if path.is_file() else None
+
+
+def _parse_enabled_agents(value: str) -> tuple[str, ...]:
+    agents: list[str] = []
+    seen: set[str] = set()
+    for raw_name in re.split(r"[,;]", value):
+        name = raw_name.strip()
+        if not name:
+            continue
+        _validate_agent_name(name)
+        if name not in seen:
+            agents.append(name)
+            seen.add(name)
+    return tuple(agents)
+
+
+def _validate_agent_name(name: str) -> None:
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+        raise ValueError("ENABLED_AGENTS entries may contain only letters, numbers, underscores, and hyphens")
+
+
+def _load_agent_dotenvs(enabled_agents: tuple[str, ...]) -> tuple[set[str], set[str]]:
+    declared_keys: set[str] = set()
+    loaded_keys: set[str] = set()
+    env_dir = Path(os.getenv("AGENT_ENV_DIR", "."))
+    for agent_name in enabled_agents:
+        env_path = env_dir / f".env.agent.{agent_name}"
+        declared_keys |= _read_dotenv_keys(env_path)
+        loaded_keys |= _load_dotenv(env_path)
+    return declared_keys, loaded_keys
+
+
+def _apply_agent_config_fragments(data: dict[str, Any], env_defaults: EnvDefaults) -> None:
+    if not env_defaults.enabled_agents_declared:
+        return
+    enabled_agents = set(env_defaults.enabled_agents)
+    config_dir = Path(os.getenv("AGENT_CONFIG_DIR", "config/agent"))
+    _prune_disabled_agent_config(data, _configured_agent_names(data) | (_discover_agent_fragment_names(config_dir) - enabled_agents))
+    for agent_name in env_defaults.enabled_agents:
+        fragment_path = config_dir / f"config.agent.{agent_name}.yaml"
+        if not fragment_path.is_file():
+            raise ValueError(f"missing enabled agent config: {fragment_path}")
+        _merge_agent_fragment(data, agent_name, _load_yaml(fragment_path))
+
+
+def _discover_agent_fragment_names(config_dir: Path) -> set[str]:
+    names: set[str] = set()
+    if config_dir.is_dir():
+        for path in config_dir.glob("config.agent.*.yaml"):
+            suffix = path.name.removeprefix("config.agent.").removesuffix(".yaml")
+            if suffix:
+                names.add(suffix)
+    env_dir = Path(os.getenv("AGENT_ENV_DIR", "."))
+    if env_dir.is_dir():
+        for path in env_dir.glob(".env.agent.*"):
+            suffix = path.name.removeprefix(".env.agent.")
+            if suffix:
+                names.add(suffix)
+    return names
+
+
+def _configured_agent_names(data: dict[str, Any]) -> set[str]:
+    agent_names: set[str] = set()
+    callers = data.get("callers", {})
+    if isinstance(callers, dict):
+        agent_names |= {name for name in callers if _is_agent_managed_caller(name)}
+    policy = data.get("policy", {})
+    high_risk = policy.get("high_risk_allowed_callers", {}) if isinstance(policy, dict) else {}
+    if isinstance(high_risk, dict):
+        agent_names |= {name for name in high_risk if _is_agent_managed_caller(name)}
+    matrix = data.get("modules", {}).get("matrix", {}) if isinstance(data.get("modules"), dict) else {}
+    if isinstance(matrix, dict):
+        caller_accounts = matrix.get("caller_accounts", {})
+        if isinstance(caller_accounts, dict):
+            agent_names |= {name for name in caller_accounts if _is_agent_managed_caller(name)}
+        accounts = matrix.get("accounts", {})
+        if isinstance(accounts, dict):
+            agent_names |= {name for name in accounts if _is_agent_managed_caller(name)}
+    return agent_names
+
+
+def _is_agent_managed_caller(name: Any) -> bool:
+    return isinstance(name, str) and name not in {"host_assistant", "role_default"}
+
+
+def _prune_disabled_agent_config(data: dict[str, Any], disabled_agents: set[str]) -> None:
+    if not disabled_agents:
+        return
+    callers = data.get("callers", {})
+    if isinstance(callers, dict):
+        for agent_name in disabled_agents:
+            callers.pop(agent_name, None)
+    policy = data.get("policy", {})
+    if isinstance(policy, dict):
+        high_risk = policy.get("high_risk_allowed_callers", {})
+        if isinstance(high_risk, dict):
+            for agent_name in disabled_agents:
+                high_risk.pop(agent_name, None)
+    matrix = data.get("modules", {}).get("matrix", {}) if isinstance(data.get("modules"), dict) else {}
+    if isinstance(matrix, dict):
+        caller_accounts = matrix.get("caller_accounts", {})
+        if isinstance(caller_accounts, dict):
+            for caller_id, account_name in list(caller_accounts.items()):
+                if isinstance(account_name, str) and account_name in disabled_agents and caller_id not in disabled_agents:
+                    caller_accounts.pop(caller_id, None)
+            for agent_name in disabled_agents:
+                account_name = caller_accounts.pop(agent_name, agent_name)
+                if isinstance(account_name, str):
+                    accounts = matrix.get("accounts", {})
+                    if isinstance(accounts, dict):
+                        accounts.pop(account_name, None)
+        accounts = matrix.get("accounts", {})
+        if isinstance(accounts, dict):
+            for agent_name in disabled_agents:
+                accounts.pop(agent_name, None)
+
+
+def _merge_agent_fragment(data: dict[str, Any], agent_name: str, fragment: dict[str, Any]) -> None:
+    caller = fragment.get("caller", {})
+    if caller is None:
+        caller = {}
+    if not isinstance(caller, dict):
+        raise ValueError(f"agent caller config must be an object: {agent_name}")
+    token_env = _configured_env_name(caller.get("token_env")) or _agent_env_name(agent_name, "GATEWAY_TOKEN_", "")
+    data.setdefault("callers", {})[agent_name] = {
+        "role": caller.get("role", "role_play"),
+        "token_env": token_env,
+        "shared_artifact_read": bool(caller.get("shared_artifact_read", False)),
+    }
+
+    high_risk_tools = fragment.get("high_risk_tools", [])
+    if high_risk_tools is None:
+        high_risk_tools = []
+    if not isinstance(high_risk_tools, list) or any(not isinstance(item, str) for item in high_risk_tools):
+        raise ValueError(f"agent high_risk_tools must be a string list: {agent_name}")
+    if high_risk_tools:
+        high_risk = data.setdefault("policy", {}).setdefault("high_risk_allowed_callers", {})
+        existing = high_risk.setdefault(agent_name, [])
+        if not isinstance(existing, list):
+            existing = []
+            high_risk[agent_name] = existing
+        for tool_name in high_risk_tools:
+            if tool_name not in existing:
+                existing.append(tool_name)
+
+    matrix = fragment.get("matrix", {})
+    if matrix is None:
+        matrix = {}
+    if not isinstance(matrix, dict):
+        raise ValueError(f"agent matrix config must be an object: {agent_name}")
+    if bool(matrix.get("enabled", False)):
+        matrix_config = data.setdefault("modules", {}).setdefault("matrix", {})
+        matrix_config["enabled"] = True
+        account_name = _configured_env_name(matrix.get("account")) or agent_name
+        matrix_config.setdefault("caller_accounts", {})[agent_name] = account_name
+        account_config = matrix_config.setdefault("accounts", {}).setdefault(account_name, {})
+        homeserver_env = _configured_env_name(matrix.get("homeserver_env"))
+        access_token_env = _configured_env_name(matrix.get("access_token_env")) or _agent_env_name(
+            agent_name,
+            "",
+            "_MATRIX_ACCESS_TOKEN",
+        )
+        if homeserver_env:
+            account_config["homeserver"] = "${" + homeserver_env + "}"
+        elif _configured_env_name(matrix.get("homeserver")):
+            account_config["homeserver"] = matrix["homeserver"]
+        account_config["access_token"] = "${" + access_token_env + "}"
+
+
+def _configured_env_name(value: Any) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _agent_env_name(agent_name: str, prefix: str, suffix: str) -> str:
+    normalized = "".join(char if char.isalnum() else "_" for char in agent_name).upper()
+    return f"{prefix}{normalized}{suffix}"
 
 
 def _load_dotenv(path: Path) -> set[str]:

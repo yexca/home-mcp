@@ -1,6 +1,6 @@
 server:
   name: home_mcp_gateway
-  version: 0.2.0
+  version: 0.2.1
   host: ${SERVER_HOST}
   port: ${SERVER_PORT}
   mcp_path: /mcp

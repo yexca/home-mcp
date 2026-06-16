@@ -272,7 +272,7 @@ def download_image_url(url: str, image_config: dict[str, Any]) -> DownloadedImag
         method="GET",
         headers={
             "Accept": "image/png,image/jpeg,image/webp,*/*",
-            "User-Agent": "home-mcp-gateway/0.2.0",
+            "User-Agent": "home-mcp-gateway/0.2.1",
         },
     )
     try:

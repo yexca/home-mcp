@@ -8,4 +8,5 @@ $env:LOCAL_IMAGE_MODULE_ENABLED = ""
 $env:TTS_MODULE_ENABLED = ""
 $env:MATRIX_MODULE_ENABLED = ""
 $env:PRINTER_MODULE_ENABLED = ""
+$env:ENABLED_AGENTS = ""
 python -m unittest discover -s tests

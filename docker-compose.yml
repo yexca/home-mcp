@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile
-    image: yexca/home-mcp-gateway:0.2.0
+    image: yexca/home-mcp-gateway:0.2.1
     container_name: home-mcp-gateway
     env_file:
       - .env
@@ -74,10 +74,13 @@ services:
       PRINTER_BRIDGE_TIMEOUT_SECONDS: ${PRINTER_BRIDGE_TIMEOUT_SECONDS:-30}
       PRINTER_MAX_FILE_BYTES: ${PRINTER_MAX_FILE_BYTES:-10485760}
       PRINTER_MAX_COPIES: ${PRINTER_MAX_COPIES:-2}
+      AGENT_ENV_DIR: /app/agent-env
     ports:
       - "8787:8787"
     volumes:
       - ./config/config.yaml:/app/config/config.yaml:ro
+      - ./config/agent:/app/config/agent:ro
+      - ./:/app/agent-env:ro
       - ./config/comfyui:/app/config/comfyui:ro
       - ./artifacts:/app/artifacts
     extra_hosts:

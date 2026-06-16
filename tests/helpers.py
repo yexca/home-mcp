@@ -15,6 +15,7 @@ def _isolate_module_switch_env() -> None:
         "TTS_MODULE_ENABLED",
         "MATRIX_MODULE_ENABLED",
         "PRINTER_MODULE_ENABLED",
+        "ENABLED_AGENTS",
     ):
         os.environ[env_name] = ""
 
