@@ -1,5 +1,6 @@
 __pycache__/
 *.py[cod]
+mcp_python_skills/**/__pycache__/
 .pytest_cache/
 .mypy_cache/
 .coverage
