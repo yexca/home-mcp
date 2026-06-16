@@ -248,7 +248,7 @@ the OS environment or root `.env`:
 | `SYNC_TOOL_TIMEOUT_SECONDS` | `limits.sync_tool_timeout_seconds` |
 | `IMAGE_TOTAL_TIMEOUT_SECONDS` | `modules.image.total_timeout_seconds` |
 | `IMAGE_STALE_JOB_GRACE_SECONDS` | `modules.image.stale_job_grace_seconds` |
-| `IMAGE_PROVIDER_TIMEOUT_SECONDS` | `modules.image.ikun.timeout_seconds` |
+| `IMAGE_PROVIDER_TIMEOUT_SECONDS` | `modules.image.openai_compatible.timeout_seconds` |
 | `LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS` | `modules.localimage.total_timeout_seconds` |
 | `LOCAL_IMAGE_STALE_JOB_GRACE_SECONDS` | `modules.localimage.stale_job_grace_seconds` |
 | `LOCAL_IMAGE_COMFYUI_TIMEOUT_SECONDS` | `modules.localimage.comfyui.timeout_seconds` |
@@ -271,8 +271,8 @@ Enable with:
 modules:
   image:
     enabled: true
-    provider: ikun
-    default_size: 1920x1080
+    provider: openai_compatible
+    default_size: auto
     allowed_sizes:
       - 1024x1024
       - 1024x1536
@@ -296,7 +296,7 @@ modules:
       - webp
     total_timeout_seconds: ${IMAGE_TOTAL_TIMEOUT_SECONDS}
     stale_job_grace_seconds: ${IMAGE_STALE_JOB_GRACE_SECONDS}
-    ikun:
+    openai_compatible:
       base_url: ${IMAGE_API_BASE_URL}
       model: ${IMAGE_API_MODEL}
       api_key: ${IMAGE_API_KEY}
@@ -305,8 +305,8 @@ modules:
         - img.opcheiben.cn
 ```
 
-Validation requires `provider: ikun`, a configured base URL, model, API key, and
-a `default_size` that appears in `allowed_sizes`. The configured
+Validation requires `provider: openai_compatible`, a configured base URL,
+model, API key, and a `default_size` of `auto` or one of `allowed_sizes`. The configured
 `allowed_sizes`, `allowed_qualities`, and `allowed_output_formats` are exposed
 as tool schema enums so clients and LLMs can see valid values before calling the
 tool. `base_url` must be the
@@ -327,8 +327,8 @@ should remain explicit rather than allowing arbitrary hosts.
 `image_generate` uses a background job contract. `total_timeout_seconds`
 defines the gateway-owned wall-clock deadline for provider generation, provider
 response decoding, provider image URL download, and artifact persistence.
-`ikun.timeout_seconds` remains the per-socket timeout passed to the provider
-HTTP adapter. On gateway deadline expiry, the job is marked failed with
+`openai_compatible.timeout_seconds` remains the per-socket timeout passed to
+the provider HTTP adapter. On gateway deadline expiry, the job is marked failed with
 `PROVIDER_TIMEOUT`. `stale_job_grace_seconds` is added to the deadline when
 startup reconciliation decides whether an old non-terminal image job was
 abandoned during restart.

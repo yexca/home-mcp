@@ -16,7 +16,24 @@ def _restore_env(previous: dict[str, str | None]) -> None:
             os.environ[key] = value
 
 
+_MODULE_SWITCH_ENV_VARS = (
+    "IMAGE_MODULE_ENABLED",
+    "LOCAL_IMAGE_MODULE_ENABLED",
+    "TTS_MODULE_ENABLED",
+    "MATRIX_MODULE_ENABLED",
+    "PRINTER_MODULE_ENABLED",
+)
+
+
 class ConfigTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._previous_module_switches = {key: os.environ.get(key) for key in _MODULE_SWITCH_ENV_VARS}
+        for key in _MODULE_SWITCH_ENV_VARS:
+            os.environ[key] = ""
+
+    def tearDown(self) -> None:
+        _restore_env(self._previous_module_switches)
+
     def test_loads_test_config_from_config_test_directory(self) -> None:
         os.environ["CONFIG_PATH"] = "tests/config/test.config.yaml"
         settings = load_settings()
@@ -309,6 +326,93 @@ class ConfigTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "API root"):
                 load_settings("tests/config/image.test.config.yaml")
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+    def test_image_provider_requires_openai_compatible_name(self) -> None:
+        previous = {
+            "IMAGE_API_BASE_URL": os.environ.get("IMAGE_API_BASE_URL"),
+            "IMAGE_API_MODEL": os.environ.get("IMAGE_API_MODEL"),
+            "IMAGE_API_KEY": os.environ.get("IMAGE_API_KEY"),
+        }
+        old_cwd = Path.cwd()
+        old_config_path = os.environ.pop("CONFIG_PATH", None)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "config").mkdir()
+                (root / ".env.example").write_text(
+                    "\n".join(
+                        [
+                            "IMAGE_API_BASE_URL=https://api.example.test",
+                            "IMAGE_API_MODEL=test-image-model",
+                            "IMAGE_API_KEY=test-image-api-key",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                (root / "config" / "config.example.yaml").write_text(
+                    "\n".join(
+                        [
+                            "server:",
+                            "  host: 127.0.0.1",
+                            "  port: 8787",
+                            "artifacts:",
+                            "  root: ./artifacts",
+                            "database:",
+                            "  path: ./artifacts/metadata.sqlite3",
+                            "limits: {}",
+                            "modules:",
+                            "  image:",
+                            "    enabled: true",
+                            "    provider: unsupported_provider",
+                            "    default_size: 1024x1024",
+                            "    allowed_sizes: [1024x1024]",
+                            "    openai_compatible:",
+                            "      base_url: ${IMAGE_API_BASE_URL}",
+                            "      model: ${IMAGE_API_MODEL}",
+                            "      api_key: ${IMAGE_API_KEY}",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                os.chdir(root)
+                try:
+                    with self.assertRaisesRegex(ValueError, "openai_compatible"):
+                        load_settings()
+                finally:
+                    os.chdir(old_cwd)
+        finally:
+            os.chdir(old_cwd)
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+            if old_config_path is not None:
+                os.environ["CONFIG_PATH"] = old_config_path
+
+    def test_image_provider_timeout_override_uses_openai_compatible_path(self) -> None:
+        previous = {
+            "IMAGE_API_BASE_URL": os.environ.get("IMAGE_API_BASE_URL"),
+            "IMAGE_API_MODEL": os.environ.get("IMAGE_API_MODEL"),
+            "IMAGE_API_KEY": os.environ.get("IMAGE_API_KEY"),
+            "IMAGE_PROVIDER_TIMEOUT_SECONDS": os.environ.get("IMAGE_PROVIDER_TIMEOUT_SECONDS"),
+        }
+        try:
+            os.environ["IMAGE_API_BASE_URL"] = "https://api.example.test"
+            os.environ["IMAGE_API_MODEL"] = "test-image-model"
+            os.environ["IMAGE_API_KEY"] = "test-image-api-key"
+            os.environ["IMAGE_PROVIDER_TIMEOUT_SECONDS"] = "7"
+
+            settings = load_settings("tests/config/image.test.config.yaml")
+
+            self.assertEqual(settings.modules["image"]["openai_compatible"]["timeout_seconds"], 7)
+            self.assertEqual(settings.modules["image"]["provider"], "openai_compatible")
         finally:
             for key, value in previous.items():
                 if value is None:

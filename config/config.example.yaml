@@ -198,8 +198,8 @@ modules:
         checkpoint_loader: "4"
   image:
     enabled: false
-    provider: ikun
-    default_size: 1920x1080
+    provider: openai_compatible
+    default_size: auto
     allowed_sizes:
       - 1024x1024
       - 1024x1536
@@ -233,7 +233,7 @@ modules:
       - image/jpeg
       - image/webp
     allow_http_image_urls: false
-    ikun:
+    openai_compatible:
       base_url: ${IMAGE_API_BASE_URL}
       model: ${IMAGE_API_MODEL}
       api_key: ${IMAGE_API_KEY}

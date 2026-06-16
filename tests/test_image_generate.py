@@ -21,7 +21,7 @@ from core.ids import new_request_id
 from core.policy import CallerIdentity
 from core.time import utc_now
 from modules.image.background import reconcile_stale_image_jobs
-from modules.image.providers.ikun_openai_compatible import IkunOpenAICompatibleProvider, ProviderImageOutput, ProviderImageResponse
+from modules.image.providers.openai_compatible import OpenAICompatibleImageProvider, ProviderImageOutput, ProviderImageResponse
 from modules.image.service import DownloadedImage, ImageGenerationService, download_image_url
 from tests.helpers import fresh_image_gateway
 from transport.request_context import RequestContext
@@ -138,7 +138,7 @@ class ImageGenerateServiceTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["artifact"]["mime_type"], "image/png")
         self.assertNotIn("https://cdn.example.test/image.png", str(result))
-        self.assertEqual(provider.calls[0]["size"], "1024x1024")
+        self.assertEqual(provider.calls[0]["size"], "auto")
 
     def test_base64_response_creates_downloadable_artifact_without_b64_payload(self) -> None:
         services, _, _ = fresh_image_gateway()
@@ -207,7 +207,7 @@ class ImageGenerateServiceTests(unittest.TestCase):
                 {
                     "allow_http_image_urls": True,
                     "max_download_bytes": 1024,
-                    "ikun": {
+                    "openai_compatible": {
                         "timeout_seconds": 2,
                         "allowed_image_url_hosts": [host],
                     },
@@ -236,7 +236,7 @@ class ImageGenerateServiceTests(unittest.TestCase):
                     {
                         "allow_http_image_urls": True,
                         "max_download_bytes": 1024,
-                        "ikun": {
+                        "openai_compatible": {
                             "timeout_seconds": 2,
                             "allowed_image_url_hosts": [host],
                         },
@@ -277,7 +277,7 @@ class ImageGenerateServiceTests(unittest.TestCase):
         thread.start()
         host, port = server.server_address
         services, _, dispatcher = fresh_image_gateway()
-        services.config.raw["modules"]["image"]["ikun"]["base_url"] = f"http://{host}:{port}"
+        services.config.raw["modules"]["image"]["openai_compatible"]["base_url"] = f"http://{host}:{port}"
         try:
             started = time.monotonic()
             result = asyncio.run(
@@ -313,7 +313,7 @@ class ImageGenerateServiceTests(unittest.TestCase):
         thread.start()
         host, port = server.server_address
         services, _, dispatcher = fresh_image_gateway()
-        services.config.raw["modules"]["image"]["ikun"]["base_url"] = f"http://{host}:{port}"
+        services.config.raw["modules"]["image"]["openai_compatible"]["base_url"] = f"http://{host}:{port}"
         services.config.raw["modules"]["image"]["total_timeout_seconds"] = 0.1
         try:
             result = asyncio.run(
@@ -414,7 +414,7 @@ class ProviderHTTPRequestHandler(BaseHTTPRequestHandler):
         return
 
 
-class IkunProviderTests(unittest.TestCase):
+class OpenAICompatibleProviderTests(unittest.TestCase):
     def setUp(self) -> None:
         ProviderHTTPRequestHandler.response_status = 200
         ProviderHTTPRequestHandler.response_body = {"data": [{"b64_json": base64.b64encode(PNG_BYTES).decode("ascii")}]}
@@ -424,7 +424,7 @@ class IkunProviderTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         host, port = self.server.server_address
-        self.provider = IkunOpenAICompatibleProvider(
+        self.provider = OpenAICompatibleImageProvider(
             base_url=f"http://{host}:{port}",
             model="test-image-model",
             api_key="test-image-api-key",
@@ -477,7 +477,7 @@ class IkunProviderTests(unittest.TestCase):
         def timed_out(req, timeout):
             raise error.URLError(socket.timeout("slow"))
 
-        provider = IkunOpenAICompatibleProvider(
+        provider = OpenAICompatibleImageProvider(
             base_url="http://127.0.0.1:1",
             model="test-image-model",
             api_key="test-image-api-key",

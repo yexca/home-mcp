@@ -37,7 +37,7 @@ _ENV_VALUE_OVERRIDES: tuple[tuple[str, tuple[str, ...], Callable[[str], Any]], .
     ("SYNC_TOOL_TIMEOUT_SECONDS", ("limits", "sync_tool_timeout_seconds"), _number_env_value),
     ("IMAGE_TOTAL_TIMEOUT_SECONDS", ("modules", "image", "total_timeout_seconds"), _number_env_value),
     ("IMAGE_STALE_JOB_GRACE_SECONDS", ("modules", "image", "stale_job_grace_seconds"), _number_env_value),
-    ("IMAGE_PROVIDER_TIMEOUT_SECONDS", ("modules", "image", "ikun", "timeout_seconds"), _number_env_value),
+    ("IMAGE_PROVIDER_TIMEOUT_SECONDS", ("modules", "image", "openai_compatible", "timeout_seconds"), _number_env_value),
     (
         "LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS",
         ("modules", "localimage", "total_timeout_seconds"),
@@ -325,19 +325,19 @@ def _validate(data: dict[str, Any]) -> None:
 def _validate_image_config(image_config: dict[str, Any]) -> None:
     if not image_config or not bool(image_config.get("enabled", False)):
         return
-    if image_config.get("provider") != "ikun":
-        raise ValueError("modules.image.provider must be ikun")
-    ikun = image_config.get("ikun", {})
+    if image_config.get("provider") != "openai_compatible":
+        raise ValueError("modules.image.provider must be openai_compatible")
+    provider_config = image_config.get("openai_compatible", {})
     for key in ("base_url", "model", "api_key"):
-        if not ikun.get(key):
+        if not provider_config.get(key):
             raise ValueError(f"missing required image provider setting: {key}")
-    parsed_base_url = urlparse(str(ikun["base_url"]))
+    parsed_base_url = urlparse(str(provider_config["base_url"]))
     if parsed_base_url.path.rstrip("/").endswith("/v1/images"):
-        raise ValueError("modules.image.ikun.base_url must be the API root, not a /v1/images endpoint path")
+        raise ValueError("modules.image.openai_compatible.base_url must be the API root, not a /v1/images endpoint path")
     allowed_sizes = image_config.get("allowed_sizes") or []
     default_size = image_config.get("default_size")
-    if not default_size or default_size not in allowed_sizes:
-        raise ValueError("modules.image.default_size must be in allowed_sizes")
+    if default_size != "auto" and (not default_size or default_size not in allowed_sizes):
+        raise ValueError("modules.image.default_size must be auto or in allowed_sizes")
     if float(image_config.get("total_timeout_seconds", 600)) <= 0:
         raise ValueError("modules.image.total_timeout_seconds must be greater than 0")
     if float(image_config.get("stale_job_grace_seconds", 30)) < 0:

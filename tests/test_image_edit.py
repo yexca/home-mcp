@@ -10,8 +10,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from core.errors import ARTIFACT_FORBIDDEN, ARTIFACT_NOT_FOUND, INVALID_ARGUMENT, UNSUPPORTED_MEDIA_TYPE
 from core.ids import new_request_id
 from core.policy import CallerIdentity
-from modules.image.providers.ikun_openai_compatible import (
-    IkunOpenAICompatibleProvider,
+from modules.image.providers.openai_compatible import (
+    OpenAICompatibleImageProvider,
     ProviderEditImage,
     ProviderImageOutput,
     ProviderImageResponse,
@@ -238,7 +238,7 @@ class EditProviderHTTPRequestHandler(BaseHTTPRequestHandler):
         return
 
 
-class IkunEditProviderTests(unittest.TestCase):
+class OpenAICompatibleEditProviderTests(unittest.TestCase):
     def setUp(self) -> None:
         EditProviderHTTPRequestHandler.request_body = b""
         EditProviderHTTPRequestHandler.content_type = ""
@@ -248,7 +248,7 @@ class IkunEditProviderTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         host, port = self.server.server_address
-        self.provider = IkunOpenAICompatibleProvider(
+        self.provider = OpenAICompatibleImageProvider(
             base_url=f"http://{host}:{port}",
             model="test-image-model",
             api_key="test-image-api-key",

@@ -41,7 +41,7 @@ class ProviderEditImage:
     data: bytes
 
 
-class IkunOpenAICompatibleProvider:
+class OpenAICompatibleImageProvider:
     def __init__(
         self,
         *,
@@ -58,9 +58,9 @@ class IkunOpenAICompatibleProvider:
         self.opener = opener or request.urlopen
 
     @classmethod
-    def from_settings(cls, settings: Settings) -> "IkunOpenAICompatibleProvider":
+    def from_settings(cls, settings: Settings) -> "OpenAICompatibleImageProvider":
         image_config = settings.modules.get("image", {})
-        provider_config = image_config.get("ikun", {})
+        provider_config = image_config.get("openai_compatible", {})
         return cls(
             base_url=str(provider_config["base_url"]),
             model=str(provider_config["model"]),

@@ -8,7 +8,19 @@ from app.config import load_settings
 from app.main import build_services
 
 
+def _isolate_module_switch_env() -> None:
+    for env_name in (
+        "IMAGE_MODULE_ENABLED",
+        "LOCAL_IMAGE_MODULE_ENABLED",
+        "TTS_MODULE_ENABLED",
+        "MATRIX_MODULE_ENABLED",
+        "PRINTER_MODULE_ENABLED",
+    ):
+        os.environ[env_name] = ""
+
+
 def fresh_gateway():
+    _isolate_module_switch_env()
     os.environ["CONFIG_PATH"] = "tests/config/test.config.yaml"
     os.environ["GATEWAY_TOKEN_HOST"] = "test-host-token"
     os.environ["GATEWAY_TOKEN_ROLE_DEFAULT"] = "test-role-token"
@@ -22,6 +34,7 @@ def fresh_gateway():
 
 
 def fresh_image_gateway():
+    _isolate_module_switch_env()
     os.environ["CONFIG_PATH"] = "tests/config/image.test.config.yaml"
     os.environ["GATEWAY_TOKEN_HOST"] = "test-host-token"
     os.environ["GATEWAY_TOKEN_ROLE_DEFAULT"] = "test-role-token"
@@ -38,6 +51,7 @@ def fresh_image_gateway():
 
 
 def fresh_localimage_gateway():
+    _isolate_module_switch_env()
     os.environ["CONFIG_PATH"] = "tests/config/localimage.test.config.yaml"
     os.environ["GATEWAY_TOKEN_HOST"] = "test-host-token"
     os.environ["GATEWAY_TOKEN_ROLE_DEFAULT"] = "test-role-token"
@@ -52,6 +66,7 @@ def fresh_localimage_gateway():
 
 
 def fresh_phase4_gateway():
+    _isolate_module_switch_env()
     os.environ["CONFIG_PATH"] = "tests/config/phase4.test.config.yaml"
     os.environ["GATEWAY_TOKEN_HOST"] = "test-host-token"
     os.environ["GATEWAY_TOKEN_ROLE_DEFAULT"] = "test-role-token"
@@ -66,6 +81,7 @@ def fresh_phase4_gateway():
 
 
 def fresh_phase5_gateway():
+    _isolate_module_switch_env()
     os.environ["CONFIG_PATH"] = "tests/config/phase5.test.config.yaml"
     os.environ["GATEWAY_TOKEN_HOST"] = "test-host-token"
     os.environ["GATEWAY_TOKEN_ROLE_DEFAULT"] = "test-role-token"

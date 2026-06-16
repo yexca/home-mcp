@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from core.artifacts import artifact_download_url
 from core.errors import GatewayError, INVALID_ARGUMENT, PROVIDER_TIMEOUT, PROVIDER_UNAVAILABLE, UNSUPPORTED_MEDIA_TYPE
 from modules.image.providers import ImageProvider, create_image_provider
-from modules.image.providers.ikun_openai_compatible import (
+from modules.image.providers.openai_compatible import (
     ProviderEditImage,
     ProviderImageOutput,
     ProviderImageResponse,
@@ -218,7 +218,7 @@ def _persist_image_outputs(
         if deadline:
             deadline.check()
         metadata = {
-            "provider": "ikun",
+            "provider": "openai_compatible",
             "model": provider_model,
             "size": size,
             "quality": quality,
@@ -257,7 +257,8 @@ def _persist_image_outputs(
 
 def download_image_url(url: str, image_config: dict[str, Any]) -> DownloadedImage:
     parsed = urlparse(url)
-    allowed_hosts = set(image_config.get("ikun", {}).get("allowed_image_url_hosts") or [])
+    provider_config = image_config.get("openai_compatible", {})
+    allowed_hosts = set(provider_config.get("allowed_image_url_hosts") or [])
     allow_http = bool(image_config.get("allow_http_image_urls", False))
     if parsed.scheme != "https" and not (allow_http and parsed.scheme == "http"):
         raise GatewayError(PROVIDER_UNAVAILABLE, "provider image URL scheme is not allowed", retryable=False)
@@ -275,7 +276,7 @@ def download_image_url(url: str, image_config: dict[str, Any]) -> DownloadedImag
         },
     )
     try:
-        with request.urlopen(req, timeout=int(image_config.get("ikun", {}).get("timeout_seconds", 60))) as response:
+        with request.urlopen(req, timeout=int(provider_config.get("timeout_seconds", 60))) as response:
             mime_type = _normalize_mime(response.headers.get("Content-Type", ""))
             if mime_type not in EXTENSION_BY_MIME:
                 raise GatewayError(UNSUPPORTED_MEDIA_TYPE, "provider image MIME type is not supported", retryable=False)
@@ -337,11 +338,12 @@ def _validated_prompt(prompt: str, max_chars: int) -> str:
 
 
 def _validated_size(size: str, image_config: dict[str, Any]) -> str:
+    if size == "auto":
+        return "auto"
     allowed = set(image_config.get("allowed_sizes") or [])
-    selected = image_config.get("default_size") if size == "auto" else size
-    if not isinstance(selected, str) or selected not in allowed:
+    if not isinstance(size, str) or size not in allowed:
         raise GatewayError(INVALID_ARGUMENT, "size is not allowed")
-    return selected
+    return size
 
 
 def _validated_member(value: str, allowed_values: list[str], field: str) -> str:
