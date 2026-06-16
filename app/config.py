@@ -425,8 +425,16 @@ def _validate_matrix_config(matrix_config: dict[str, Any]) -> None:
         return
     if not matrix_config.get("homeserver"):
         raise ValueError("modules.matrix.homeserver is required")
-    if not matrix_config.get("access_token"):
-        raise ValueError("modules.matrix.access_token is required")
+    accounts = matrix_config.get("accounts", {})
+    account_tokens = []
+    if isinstance(accounts, dict):
+        account_tokens = [
+            spec.get("access_token")
+            for spec in accounts.values()
+            if isinstance(spec, dict) and spec.get("access_token")
+        ]
+    if not matrix_config.get("access_token") and not account_tokens:
+        raise ValueError("modules.matrix.access_token or modules.matrix.accounts.*.access_token is required")
 
 
 def _validate_printer_config(printer_config: dict[str, Any]) -> None:

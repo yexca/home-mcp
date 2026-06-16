@@ -304,6 +304,10 @@ Polling guidance:
 
 Registered only when `modules.matrix.enabled` is true.
 
+Matrix access tokens are selected by server configuration from the resolved MCP
+caller identity. Tool inputs never include `access_token`; callers cannot choose
+or override the Matrix account through tool arguments.
+
 ### `matrix_send_text`
 
 Risk: `high`; creates a job.

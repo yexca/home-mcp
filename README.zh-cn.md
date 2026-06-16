@@ -82,6 +82,32 @@ Invoke-RestMethod http://127.0.0.1:8787/readyz
 
 现阶段实际模块范围仅限 `image` 和 `localimage`。
 
+## Matrix 多账号发送配置
+
+Matrix 工具仍然只接收原有参数，例如 `room_id`、`text`、`audio_artifact_id`、`image_artifact_id` 和可选 `body`，不会接收 Matrix `access_token`。
+
+可以在服务端配置里按 MCP caller 自动选择 Matrix 发送账号：
+
+```yaml
+modules:
+  matrix:
+    enabled: true
+    homeserver: ${MATRIX_HOMESERVER}
+    access_token: ${MATRIX_ACCESS_TOKEN}
+    caller_accounts:
+      role_default: agent1
+      agent1: agent1
+      agent2: agent2
+    accounts:
+      agent1:
+        homeserver: ${MATRIX_HOMESERVER}
+        access_token: ${AGENT1_MATRIX_ACCESS_TOKEN}
+      agent2:
+        access_token: ${AGENT2_MATRIX_ACCESS_TOKEN}
+```
+
+选择顺序是：先用 `caller_accounts[caller_id]` 映射到账号 key；没有映射时直接使用 `caller_id`；再查 `accounts[account_key]`；如果没有对应账号 token，则回退到旧的 `modules.matrix.access_token`。房间 allowlist 和 high-risk caller policy 仍然会先执行，不会因为多账号配置被绕过。
+
 ## Docker
 
 Docker Compose 使用同一个 `config/config.yaml`：

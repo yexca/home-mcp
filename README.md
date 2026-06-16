@@ -76,11 +76,7 @@ Common user-editable sections are:
 - module runtime switches such as `IMAGE_MODULE_ENABLED`, `LOCAL_IMAGE_MODULE_ENABLED`, `TTS_MODULE_ENABLED`, `MATRIX_MODULE_ENABLED`, and `PRINTER_MODULE_ENABLED`
 - `callers.*.token_env`
 - `policy.high_risk_allowed_callers`
-- `modules.image`, `modules.localimage`
-
-At the moment, only the `image` and `localimage` modules are actually used.
-Other module directories may exist in the repository, but they are not part of
-the current practical setup.
+- `modules.image`, `modules.localimage`, `modules.tts`, `modules.matrix`, `modules.printer`
 
 Secrets should stay in environment variables, not YAML files. Copy
 `.env.example` to `.env` and put local token/provider values there.
@@ -128,8 +124,36 @@ Currently used module tools:
 
 - `image_generate`, `image_edit`: generate or edit images and store results as image artifacts.
 - `localimage_generate`: generate images through a local ComfyUI workflow and store results as image artifacts.
+- `tts_synthesize`: synthesize text into an audio artifact.
+- `matrix_send_text`, `matrix_send_audio`, `matrix_send_image`: send to allowlisted Matrix rooms.
+- `printer_print_file`: send allowlisted artifacts to configured printers.
 
-For now, the practical module scope is limited to `image` and `localimage`.
+Matrix sender accounts are configured server-side. The tools do not accept a
+Matrix `access_token` argument. To let different MCP callers send as different
+Matrix users, configure optional caller mappings and accounts:
+
+```yaml
+modules:
+  matrix:
+    enabled: true
+    homeserver: ${MATRIX_HOMESERVER}
+    access_token: ${MATRIX_ACCESS_TOKEN}
+    caller_accounts:
+      role_default: agent1
+      agent1: agent1
+      agent2: agent2
+    accounts:
+      agent1:
+        homeserver: ${MATRIX_HOMESERVER}
+        access_token: ${AGENT1_MATRIX_ACCESS_TOKEN}
+      agent2:
+        access_token: ${AGENT2_MATRIX_ACCESS_TOKEN}
+```
+
+Selection order is: `caller_accounts[caller_id]`, then direct `caller_id`, then
+the matching `accounts[account_key]`, then legacy `modules.matrix.access_token`
+as the default/fallback sender. Room allowlists and high-risk caller policy
+still apply before any Matrix send.
 
 ## Authentication And Policy
 

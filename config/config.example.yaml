@@ -274,7 +274,21 @@ modules:
   matrix:
     enabled: false
     homeserver: ${MATRIX_HOMESERVER}
+    # Legacy/default sender token. Used when no caller-specific account matches.
     access_token: ${MATRIX_ACCESS_TOKEN}
+    caller_accounts: {}
+    accounts: {}
+    # Example:
+    # caller_accounts:
+    #   role_default: agent1
+    #   agent1: agent1
+    #   agent2: agent2
+    # accounts:
+    #   agent1:
+    #     homeserver: ${MATRIX_HOMESERVER}
+    #     access_token: ${AGENT1_MATRIX_ACCESS_TOKEN}
+    #   agent2:
+    #     access_token: ${AGENT2_MATRIX_ACCESS_TOKEN}
     timeout_seconds: ${MATRIX_TIMEOUT_SECONDS}
     max_text_chars: ${MATRIX_MAX_TEXT_CHARS}
     allowed_image_mime_types:

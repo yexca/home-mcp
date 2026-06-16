@@ -107,15 +107,34 @@ async def matrix_send_image(arguments: dict[str, Any], ctx: RequestContext) -> d
 
 def _client_from_settings(ctx: RequestContext) -> MatrixHttpClient:
     matrix_config = ctx.config.modules.get("matrix", {})
-    homeserver = matrix_config.get("homeserver")
-    access_token = matrix_config.get("access_token")
+    account_config = _matrix_account_config(matrix_config, ctx.caller.caller_id)
+    homeserver = _configured_string(account_config.get("homeserver")) or matrix_config.get("homeserver")
+    access_token = _configured_string(account_config.get("access_token")) or matrix_config.get("access_token")
     if not isinstance(homeserver, str) or not homeserver or not isinstance(access_token, str) or not access_token:
-        raise GatewayError(INVALID_ARGUMENT, "matrix module is not configured")
+        raise GatewayError(INVALID_ARGUMENT, "matrix account is not configured")
     return MatrixHttpClient(
         homeserver=homeserver,
         access_token=access_token,
         timeout_seconds=int(matrix_config.get("timeout_seconds", 30)),
     )
+
+
+def _matrix_account_config(matrix_config: dict[str, Any], caller_id: str) -> dict[str, Any]:
+    caller_accounts = matrix_config.get("caller_accounts", {})
+    account_key = caller_id
+    if isinstance(caller_accounts, dict):
+        mapped = caller_accounts.get(caller_id)
+        if isinstance(mapped, str) and mapped:
+            account_key = mapped
+    accounts = matrix_config.get("accounts", {})
+    if not isinstance(accounts, dict):
+        return {}
+    account_config = accounts.get(account_key)
+    return account_config if isinstance(account_config, dict) else {}
+
+
+def _configured_string(value: Any) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 def _validated_room(room_id: Any, ctx: RequestContext) -> str:

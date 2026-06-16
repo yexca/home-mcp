@@ -473,6 +473,16 @@ modules:
     enabled: true
     homeserver: ${MATRIX_HOMESERVER}
     access_token: ${MATRIX_ACCESS_TOKEN}
+    caller_accounts:
+      role_default: agent1
+      agent1: agent1
+      agent2: agent2
+    accounts:
+      agent1:
+        homeserver: ${MATRIX_HOMESERVER}
+        access_token: ${AGENT1_MATRIX_ACCESS_TOKEN}
+      agent2:
+        access_token: ${AGENT2_MATRIX_ACCESS_TOKEN}
     timeout_seconds: ${MATRIX_TIMEOUT_SECONDS}
     allowed_image_mime_types:
       - image/png
@@ -483,6 +493,14 @@ modules:
 Matrix tools are high risk. Configure room allowlists through
 `policy.allowed_matrix_rooms` or `modules.matrix.allowed_rooms`, and configure
 high-risk caller access in `policy.high_risk_allowed_callers`.
+Matrix sender credentials are selected from the MCP caller identity: the
+gateway first maps `ctx.caller.caller_id` through optional
+`modules.matrix.caller_accounts`, then looks up
+`modules.matrix.accounts[account_key]`. Account `access_token` values are never
+tool arguments. If no caller-specific account token is configured, the gateway
+uses legacy `modules.matrix.access_token`; if neither exists, the send fails
+with `matrix account is not configured`. Account-level `homeserver` overrides
+`modules.matrix.homeserver` when present.
 `matrix_send_image` accepts readable image artifacts whose MIME type appears in
 `modules.matrix.allowed_image_mime_types`; when omitted, it defaults to
 `image/png`, `image/jpeg`, and `image/webp`.
