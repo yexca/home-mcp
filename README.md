@@ -65,6 +65,7 @@ later defaults:
 4. If `CONFIG_PATH` is not set and `config/config.yaml` exists, load that YAML as the user config.
 5. Fill missing YAML keys from `config/config.example.yaml`.
 6. Replace placeholders such as `${SERVER_PORT}` and `${IMAGE_API_KEY}`.
+7. Apply explicit environment overrides for module switches and timeout values.
 
 Common user-editable sections are:
 
@@ -72,6 +73,7 @@ Common user-editable sections are:
 - `ARTIFACT_ROOT`, `ARTIFACT_PUBLIC_BASE_URL`, artifact size and URL TTL limits
 - `DATABASE_PATH`, `DATABASE_BUSY_TIMEOUT_MS`
 - tool timeout and rate limit variables such as `SYNC_TOOL_TIMEOUT_SECONDS` and `MATRIX_MESSAGES_PER_ROOM_PER_MINUTE`
+- module runtime switches such as `IMAGE_MODULE_ENABLED`, `LOCAL_IMAGE_MODULE_ENABLED`, `TTS_MODULE_ENABLED`, `MATRIX_MODULE_ENABLED`, and `PRINTER_MODULE_ENABLED`
 - `callers.*.token_env`
 - `policy.high_risk_allowed_callers`
 - `modules.image`, `modules.localimage`

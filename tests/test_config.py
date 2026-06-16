@@ -8,6 +8,14 @@ from pathlib import Path
 from app.config import load_settings
 
 
+def _restore_env(previous: dict[str, str | None]) -> None:
+    for key, value in previous.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
 class ConfigTests(unittest.TestCase):
     def test_loads_test_config_from_config_test_directory(self) -> None:
         os.environ["CONFIG_PATH"] = "tests/config/test.config.yaml"
@@ -26,6 +34,128 @@ class ConfigTests(unittest.TestCase):
                 os.environ.pop("ARTIFACT_PUBLIC_BASE_URL", None)
             else:
                 os.environ["ARTIFACT_PUBLIC_BASE_URL"] = previous
+
+    def test_module_enabled_can_be_overridden_by_env(self) -> None:
+        previous = {
+            "MATRIX_ACCESS_TOKEN": os.environ.get("MATRIX_ACCESS_TOKEN"),
+            "TTS_MODULE_ENABLED": os.environ.get("TTS_MODULE_ENABLED"),
+        }
+        try:
+            os.environ["MATRIX_ACCESS_TOKEN"] = "test-matrix-token"
+            os.environ["TTS_MODULE_ENABLED"] = "false"
+            settings = load_settings("tests/config/phase4.test.config.yaml")
+            self.assertFalse(settings.modules["tts"]["enabled"])
+        finally:
+            _restore_env(previous)
+
+    def test_module_timeout_can_be_overridden_by_env(self) -> None:
+        previous = {
+            "MATRIX_ACCESS_TOKEN": os.environ.get("MATRIX_ACCESS_TOKEN"),
+            "TTS_TOTAL_TIMEOUT_SECONDS": os.environ.get("TTS_TOTAL_TIMEOUT_SECONDS"),
+        }
+        try:
+            os.environ["MATRIX_ACCESS_TOKEN"] = "test-matrix-token"
+            os.environ["TTS_TOTAL_TIMEOUT_SECONDS"] = "3.5"
+            settings = load_settings("tests/config/phase4.test.config.yaml")
+            self.assertEqual(settings.modules["tts"]["total_timeout_seconds"], 3.5)
+        finally:
+            _restore_env(previous)
+
+    def test_env_example_module_switch_does_not_override_yaml(self) -> None:
+        old_cwd = Path.cwd()
+        old_config_path = os.environ.pop("CONFIG_PATH", None)
+        previous_tts_enabled = os.environ.pop("TTS_MODULE_ENABLED", None)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "config").mkdir()
+                (root / ".env.example").write_text("TTS_MODULE_ENABLED=false\n", encoding="utf-8")
+                (root / "config" / "config.example.yaml").write_text(
+                    "\n".join(
+                        [
+                            "server:",
+                            "  host: 127.0.0.1",
+                            "  port: 8787",
+                            "artifacts:",
+                            "  root: ./artifacts",
+                            "database:",
+                            "  path: ./artifacts/metadata.sqlite3",
+                            "limits: {}",
+                            "modules:",
+                            "  tts:",
+                            "    enabled: true",
+                            "    provider: mock",
+                            "    default_voice: default",
+                            "    voices: [default]",
+                            "    default_language: en-US",
+                            "    languages: [en-US]",
+                            "    default_format: wav",
+                            "    allowed_formats: [wav]",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                os.chdir(root)
+                try:
+                    settings = load_settings()
+                    self.assertTrue(settings.modules["tts"]["enabled"])
+                finally:
+                    os.chdir(old_cwd)
+        finally:
+            os.chdir(old_cwd)
+            os.environ.pop("TTS_MODULE_ENABLED", None)
+            if previous_tts_enabled is not None:
+                os.environ["TTS_MODULE_ENABLED"] = previous_tts_enabled
+            if old_config_path is not None:
+                os.environ["CONFIG_PATH"] = old_config_path
+
+    def test_env_example_module_switch_stays_default_across_repeated_loads(self) -> None:
+        old_cwd = Path.cwd()
+        old_config_path = os.environ.pop("CONFIG_PATH", None)
+        previous_tts_enabled = os.environ.pop("TTS_MODULE_ENABLED", None)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "config").mkdir()
+                (root / ".env.example").write_text("TTS_MODULE_ENABLED=false\n", encoding="utf-8")
+                (root / "config" / "config.example.yaml").write_text(
+                    "\n".join(
+                        [
+                            "server:",
+                            "  host: 127.0.0.1",
+                            "  port: 8787",
+                            "artifacts:",
+                            "  root: ./artifacts",
+                            "database:",
+                            "  path: ./artifacts/metadata.sqlite3",
+                            "limits: {}",
+                            "modules:",
+                            "  tts:",
+                            "    enabled: true",
+                            "    provider: mock",
+                            "    default_voice: default",
+                            "    voices: [default]",
+                            "    default_language: en-US",
+                            "    languages: [en-US]",
+                            "    default_format: wav",
+                            "    allowed_formats: [wav]",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                os.chdir(root)
+                try:
+                    self.assertTrue(load_settings().modules["tts"]["enabled"])
+                    self.assertTrue(load_settings().modules["tts"]["enabled"])
+                finally:
+                    os.chdir(old_cwd)
+        finally:
+            os.chdir(old_cwd)
+            os.environ.pop("TTS_MODULE_ENABLED", None)
+            if previous_tts_enabled is not None:
+                os.environ["TTS_MODULE_ENABLED"] = previous_tts_enabled
+            if old_config_path is not None:
+                os.environ["CONFIG_PATH"] = old_config_path
 
     def test_auto_loads_config_yaml_when_config_path_is_not_set(self) -> None:
         old_cwd = Path.cwd()

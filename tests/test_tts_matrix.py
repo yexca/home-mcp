@@ -52,6 +52,20 @@ def wait_for_job(services, job_id: str, status: str | None = None, timeout: floa
     return last
 
 
+def wait_for_audit(services, job_id: str, status: str, timeout: float = 3):
+    deadline = time.monotonic() + timeout
+    last = None
+    while time.monotonic() < deadline:
+        last = services.artifacts.conn.execute(
+            "SELECT status, error_code FROM audit_events WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+        if last and last["status"] == status:
+            return last
+        time.sleep(0.02)
+    return last
+
+
 class FakeTTSProvider:
     def __init__(self, mime_type: str = "audio/wav") -> None:
         self.mime_type = mime_type
@@ -228,10 +242,7 @@ class TTSSynthesisTests(unittest.TestCase):
                 )
             )
             job = wait_for_job(services, accepted["job_id"], "failed")
-            audit = services.artifacts.conn.execute(
-                "SELECT status, error_code FROM audit_events WHERE job_id = ?",
-                (accepted["job_id"],),
-            ).fetchone()
+            audit = wait_for_audit(services, accepted["job_id"], "failed")
         finally:
             AsyncTTSProviderHTTPRequestHandler.release_event.set()
             server.shutdown()

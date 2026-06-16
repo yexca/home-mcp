@@ -3,14 +3,77 @@ from __future__ import annotations
 import os
 import re
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 import yaml
 
 _ENV_PATTERN = re.compile(r"\$\{([A-Z0-9_]+)\}")
+
+def _number_env_value(value: str) -> int | float:
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("environment override value must not be empty")
+    try:
+        number = float(stripped)
+    except ValueError as exc:
+        raise ValueError(f"environment override value must be numeric: {stripped}") from exc
+    if number.is_integer():
+        return int(number)
+    return number
+
+
+_MODULE_ENABLED_ENV_VARS = {
+    "image": "IMAGE_MODULE_ENABLED",
+    "localimage": "LOCAL_IMAGE_MODULE_ENABLED",
+    "tts": "TTS_MODULE_ENABLED",
+    "matrix": "MATRIX_MODULE_ENABLED",
+    "printer": "PRINTER_MODULE_ENABLED",
+}
+
+_ENV_VALUE_OVERRIDES: tuple[tuple[str, tuple[str, ...], Callable[[str], Any]], ...] = (
+    ("SYNC_TOOL_TIMEOUT_SECONDS", ("limits", "sync_tool_timeout_seconds"), _number_env_value),
+    ("IMAGE_TOTAL_TIMEOUT_SECONDS", ("modules", "image", "total_timeout_seconds"), _number_env_value),
+    ("IMAGE_STALE_JOB_GRACE_SECONDS", ("modules", "image", "stale_job_grace_seconds"), _number_env_value),
+    ("IMAGE_PROVIDER_TIMEOUT_SECONDS", ("modules", "image", "ikun", "timeout_seconds"), _number_env_value),
+    (
+        "LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS",
+        ("modules", "localimage", "total_timeout_seconds"),
+        _number_env_value,
+    ),
+    (
+        "LOCAL_IMAGE_STALE_JOB_GRACE_SECONDS",
+        ("modules", "localimage", "stale_job_grace_seconds"),
+        _number_env_value,
+    ),
+    (
+        "LOCAL_IMAGE_COMFYUI_TIMEOUT_SECONDS",
+        ("modules", "localimage", "comfyui", "timeout_seconds"),
+        _number_env_value,
+    ),
+    (
+        "LOCAL_IMAGE_COMFYUI_MAX_WAIT_SECONDS",
+        ("modules", "localimage", "comfyui", "max_wait_seconds"),
+        _number_env_value,
+    ),
+    (
+        "LOCAL_IMAGE_COMFYUI_POLL_INTERVAL_SECONDS",
+        ("modules", "localimage", "comfyui", "poll_interval_seconds"),
+        _number_env_value,
+    ),
+    ("TTS_TOTAL_TIMEOUT_SECONDS", ("modules", "tts", "total_timeout_seconds"), _number_env_value),
+    ("TTS_STALE_JOB_GRACE_SECONDS", ("modules", "tts", "stale_job_grace_seconds"), _number_env_value),
+    ("TTS_PROVIDER_TIMEOUT_SECONDS", ("modules", "tts", "local_http", "timeout_seconds"), _number_env_value),
+    ("MATRIX_TIMEOUT_SECONDS", ("modules", "matrix", "timeout_seconds"), _number_env_value),
+    ("PRINTER_BRIDGE_TIMEOUT_SECONDS", ("modules", "printer", "bridge_http", "timeout_seconds"), _number_env_value),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class EnvDefaults:
+    explicit_keys: set[str] = field(default_factory=set)
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,17 +120,19 @@ class Settings:
 
 
 def load_settings(config_path: str | None = None) -> Settings:
-    _load_env_defaults()
+    env_defaults = _load_env_defaults()
     data = _load_config_with_defaults(config_path)
-    data = _substitute_env(data)
-    _apply_env_overrides(data)
+    data = _substitute_env(data, _load_env_template_values())
+    _apply_env_overrides(data, env_defaults)
     _validate(data)
     return Settings(data)
 
 
-def _load_env_defaults() -> None:
-    _load_dotenv(Path(".env"))
-    _load_dotenv(Path(".env.example"))
+def _load_env_defaults() -> EnvDefaults:
+    initial_keys = set(os.environ)
+    dotenv_declared_keys = _read_dotenv_keys(Path(".env"))
+    dotenv_keys = _load_dotenv(Path(".env"))
+    return EnvDefaults(explicit_keys=initial_keys | dotenv_declared_keys | dotenv_keys)
 
 
 def _load_config_with_defaults(config_path: str | None = None) -> dict[str, Any]:
@@ -83,9 +148,10 @@ def _default_user_config_path() -> str | None:
     return str(path) if path.is_file() else None
 
 
-def _load_dotenv(path: Path) -> None:
+def _load_dotenv(path: Path) -> set[str]:
+    loaded_keys: set[str] = set()
     if not path.is_file():
-        return
+        return loaded_keys
     with path.open("r", encoding="utf-8") as fh:
         for raw_line in fh:
             line = raw_line.strip()
@@ -96,6 +162,46 @@ def _load_dotenv(path: Path) -> None:
             if not key or key in os.environ:
                 continue
             os.environ[key] = _unquote_env_value(value.strip())
+            loaded_keys.add(key)
+    return loaded_keys
+
+
+def _load_env_template_values() -> dict[str, str]:
+    template_values = _read_dotenv_values(Path(".env.example"))
+    template_values.update(os.environ)
+    return template_values
+
+
+def _read_dotenv_keys(path: Path) -> set[str]:
+    keys: set[str] = set()
+    if not path.is_file():
+        return keys
+    with path.open("r", encoding="utf-8") as fh:
+        for raw_line in fh:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _ = line.split("=", 1)
+            key = key.strip()
+            if key:
+                keys.add(key)
+    return keys
+
+
+def _read_dotenv_values(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.is_file():
+        return values
+    with path.open("r", encoding="utf-8") as fh:
+        for raw_line in fh:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            if key and key not in values:
+                values[key] = _unquote_env_value(value.strip())
+    return values
 
 
 def _unquote_env_value(value: str) -> str:
@@ -132,20 +238,70 @@ def _deep_fill_defaults(data: dict[str, Any], defaults: dict[str, Any]) -> dict[
     return result
 
 
-def _substitute_env(value: Any) -> Any:
+def _substitute_env(value: Any, env_values: dict[str, str]) -> Any:
     if isinstance(value, dict):
-        return {key: _substitute_env(item) for key, item in value.items()}
+        return {key: _substitute_env(item, env_values) for key, item in value.items()}
     if isinstance(value, list):
-        return [_substitute_env(item) for item in value]
+        return [_substitute_env(item, env_values) for item in value]
     if isinstance(value, str):
-        return _ENV_PATTERN.sub(lambda match: os.getenv(match.group(1), ""), value)
+        return _ENV_PATTERN.sub(lambda match: env_values.get(match.group(1), ""), value)
     return value
 
 
-def _apply_env_overrides(data: dict[str, Any]) -> None:
+def _apply_env_overrides(data: dict[str, Any], env_defaults: EnvDefaults) -> None:
     artifact_public_base_url = os.getenv("ARTIFACT_PUBLIC_BASE_URL", "").strip()
     if artifact_public_base_url:
         data.setdefault("artifacts", {})["public_base_url"] = artifact_public_base_url
+    _apply_module_enabled_env_overrides(data, env_defaults)
+    _apply_value_env_overrides(data, env_defaults)
+
+
+def _apply_module_enabled_env_overrides(data: dict[str, Any], env_defaults: EnvDefaults) -> None:
+    modules = data.setdefault("modules", {})
+    for module_name, env_name in _MODULE_ENABLED_ENV_VARS.items():
+        raw_value = _explicit_env(env_name, env_defaults)
+        if raw_value is None:
+            continue
+        modules.setdefault(module_name, {})["enabled"] = _parse_bool_env(env_name, raw_value)
+
+
+def _apply_value_env_overrides(data: dict[str, Any], env_defaults: EnvDefaults) -> None:
+    for env_name, path, parser in _ENV_VALUE_OVERRIDES:
+        raw_value = _explicit_env(env_name, env_defaults)
+        if raw_value is None:
+            continue
+        _set_nested(data, path, parser(raw_value))
+
+
+def _explicit_env(env_name: str, env_defaults: EnvDefaults) -> str | None:
+    if env_name not in env_defaults.explicit_keys:
+        return None
+    value = os.getenv(env_name)
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    return value
+
+
+def _parse_bool_env(env_name: str, value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    raise ValueError(f"{env_name} must be a boolean value")
+
+
+def _set_nested(data: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
+    current = data
+    for key in path[:-1]:
+        next_value = current.setdefault(key, {})
+        if not isinstance(next_value, dict):
+            raise ValueError(f"cannot override non-object configuration path: {'.'.join(path[:-1])}")
+        current = next_value
+    current[path[-1]] = value
 
 
 def _validate(data: dict[str, Any]) -> None:

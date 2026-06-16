@@ -74,6 +74,20 @@ def wait_for_job(services, job_id: str, status: str | None = None, timeout: floa
     return last
 
 
+def wait_for_audit(services, job_id: str, status: str, timeout: float = 3):
+    deadline = time.monotonic() + timeout
+    last = None
+    while time.monotonic() < deadline:
+        last = services.artifacts.conn.execute(
+            "SELECT status, error_code FROM audit_events WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+        if last and last["status"] == status:
+            return last
+        time.sleep(0.02)
+    return last
+
+
 class ImageGenerateServiceTests(unittest.TestCase):
     def test_registered_schema_exposes_configured_image_enums(self) -> None:
         _, registry, _ = fresh_image_gateway()
@@ -310,10 +324,7 @@ class ImageGenerateServiceTests(unittest.TestCase):
                 )
             )
             job = wait_for_job(services, result["job_id"], "failed")
-            audit = services.artifacts.conn.execute(
-                "SELECT status, error_code FROM audit_events WHERE job_id = ?",
-                (result["job_id"],),
-            ).fetchone()
+            audit = wait_for_audit(services, result["job_id"], "failed")
         finally:
             AsyncProviderHTTPRequestHandler.release_event.set()
             server.shutdown()

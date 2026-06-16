@@ -35,10 +35,15 @@ Load order:
 4. Otherwise, if `config/config.yaml` exists, load it as the user config.
 5. Fill missing YAML keys from `config/config.example.yaml`.
 6. Substitute environment placeholders.
+7. Apply explicit runtime environment overrides for module enablement and timeout values.
 
 In practical terms, `.env` wins over `.env.example`, and user YAML wins over
 `config/config.example.yaml`. Existing OS environment variables win over both
 dotenv files.
+
+Runtime overrides are applied only when a value is explicitly supplied by the
+OS environment or root `.env`. Values loaded only from `.env.example` fill YAML
+placeholders, but do not override YAML module switches or timeout fields.
 
 ## Required Sections
 
@@ -219,6 +224,44 @@ limits:
 Some configured global concurrency keys exist in config for future hardening,
 but the current implementation applies the per-caller/per-room checks shown in
 service code.
+
+## Runtime Module And Timeout Overrides
+
+Module availability can be overridden without editing YAML:
+
+```dotenv
+IMAGE_MODULE_ENABLED=true
+LOCAL_IMAGE_MODULE_ENABLED=false
+TTS_MODULE_ENABLED=true
+MATRIX_MODULE_ENABLED=false
+PRINTER_MODULE_ENABLED=false
+```
+
+Boolean values accept `true/false`, `1/0`, `yes/no`, and `on/off`. Leave a
+variable unset or empty to keep the YAML value.
+
+The following timeout variables also override the merged YAML value when set in
+the OS environment or root `.env`:
+
+| Variable | YAML Path |
+| --- | --- |
+| `SYNC_TOOL_TIMEOUT_SECONDS` | `limits.sync_tool_timeout_seconds` |
+| `IMAGE_TOTAL_TIMEOUT_SECONDS` | `modules.image.total_timeout_seconds` |
+| `IMAGE_STALE_JOB_GRACE_SECONDS` | `modules.image.stale_job_grace_seconds` |
+| `IMAGE_PROVIDER_TIMEOUT_SECONDS` | `modules.image.ikun.timeout_seconds` |
+| `LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS` | `modules.localimage.total_timeout_seconds` |
+| `LOCAL_IMAGE_STALE_JOB_GRACE_SECONDS` | `modules.localimage.stale_job_grace_seconds` |
+| `LOCAL_IMAGE_COMFYUI_TIMEOUT_SECONDS` | `modules.localimage.comfyui.timeout_seconds` |
+| `LOCAL_IMAGE_COMFYUI_POLL_INTERVAL_SECONDS` | `modules.localimage.comfyui.poll_interval_seconds` |
+| `LOCAL_IMAGE_COMFYUI_MAX_WAIT_SECONDS` | `modules.localimage.comfyui.max_wait_seconds` |
+| `TTS_TOTAL_TIMEOUT_SECONDS` | `modules.tts.total_timeout_seconds` |
+| `TTS_STALE_JOB_GRACE_SECONDS` | `modules.tts.stale_job_grace_seconds` |
+| `TTS_PROVIDER_TIMEOUT_SECONDS` | `modules.tts.local_http.timeout_seconds` |
+| `MATRIX_TIMEOUT_SECONDS` | `modules.matrix.timeout_seconds` |
+| `PRINTER_BRIDGE_TIMEOUT_SECONDS` | `modules.printer.bridge_http.timeout_seconds` |
+
+All timeout override values must be numeric and still pass the normal
+module-specific validation.
 
 ## Image Module
 
