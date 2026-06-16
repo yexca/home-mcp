@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
 import time
 import unittest
@@ -531,6 +532,23 @@ class MatrixProviderAndWorkflowTests(unittest.TestCase):
         self.assertNotIn("test-matrix-token", str(sent))
         self.assertNotIn("test-matrix-token", str([tuple(row) for row in rows]))
 
+    def test_empty_matrix_room_allowlist_allows_any_room(self) -> None:
+        services, _, dispatcher = fresh_phase4_gateway()
+        services.config.raw["modules"]["matrix"]["homeserver"] = self.homeserver
+        services.config.raw["policy"]["allowed_matrix_rooms"] = []
+
+        sent = asyncio.run(
+            dispatcher.dispatch(
+                "matrix_send_text",
+                {"room_id": "!anywhere:example.test", "text": "open room policy"},
+                authorization="Bearer test-host-token",
+            )
+        )
+
+        self.assertTrue(sent["ok"])
+        self.assertEqual(sent["room_id"], "!anywhere:example.test")
+        self.assertEqual(MatrixHTTPRequestHandler.requests[0]["auth"], "Bearer test-matrix-token")
+
     def test_dispatcher_selects_matrix_account_by_caller(self) -> None:
         services, _, dispatcher = fresh_phase4_gateway()
         matrix_config = services.config.raw["modules"]["matrix"]
@@ -574,6 +592,43 @@ class MatrixProviderAndWorkflowTests(unittest.TestCase):
         self.assertNotIn("agent2-matrix-token", str(from_agent2))
         self.assertNotIn("agent1-matrix-token", str([tuple(row) for row in rows]))
         self.assertNotIn("agent2-matrix-token", str([tuple(row) for row in rows]))
+
+    def test_dispatcher_selects_matrix_account_by_new_bearer_token_caller(self) -> None:
+        services, _, dispatcher = fresh_phase4_gateway()
+        matrix_config = services.config.raw["modules"]["matrix"]
+        matrix_config["homeserver"] = self.homeserver
+        matrix_config["access_token"] = ""
+        matrix_config["accounts"] = {
+            "agent3": {"access_token": "agent3-matrix-token"},
+        }
+        matrix_config["caller_accounts"] = {
+            "agent3": "agent3",
+        }
+        services.config.raw["callers"]["agent3"] = {
+            "role": "role_play",
+            "token_env": "GATEWAY_TOKEN_AGENT3",
+            "shared_artifact_read": False,
+        }
+        services.config.raw["policy"]["high_risk_allowed_callers"]["agent3"] = ["matrix_send_text"]
+
+        original = os.environ.get("GATEWAY_TOKEN_AGENT3")
+        os.environ["GATEWAY_TOKEN_AGENT3"] = "test-agent3-token"
+        try:
+            sent = asyncio.run(
+                dispatcher.dispatch(
+                    "matrix_send_text",
+                    {"room_id": "!allowed:example.test", "text": "from agent3 bearer"},
+                    authorization="Bearer test-agent3-token",
+                )
+            )
+        finally:
+            if original is None:
+                os.environ.pop("GATEWAY_TOKEN_AGENT3", None)
+            else:
+                os.environ["GATEWAY_TOKEN_AGENT3"] = original
+
+        self.assertTrue(sent["ok"])
+        self.assertEqual(MatrixHTTPRequestHandler.requests[0]["auth"], "Bearer agent3-matrix-token")
 
     def test_dispatcher_falls_back_to_legacy_matrix_token_when_account_missing(self) -> None:
         services, _, dispatcher = fresh_phase4_gateway()

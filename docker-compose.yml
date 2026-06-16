@@ -3,8 +3,10 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile
-    image: home-mcp-gateway:0.1.1
+    image: yexca/home-mcp-gateway:0.2.0
     container_name: home-mcp-gateway
+    env_file:
+      - .env
     environment:
       GATEWAY_TOKEN_HOST: ${GATEWAY_TOKEN_HOST:-}
       GATEWAY_TOKEN_ROLE_DEFAULT: ${GATEWAY_TOKEN_ROLE_DEFAULT:-}

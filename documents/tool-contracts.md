@@ -323,7 +323,7 @@ Input:
 
 Rules:
 
-- `room_id` must be allowlisted.
+- `room_id` must be allowlisted when a non-empty Matrix room allowlist is configured.
 - Caller must be allowed to use this high-risk tool.
 - The room is subject to `matrix_messages_per_room_per_minute`.
 

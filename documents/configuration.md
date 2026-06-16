@@ -62,7 +62,7 @@ The loader also validates module-specific settings when a module is enabled.
 ```yaml
 server:
   name: home_mcp_gateway
-  version: 0.1.0
+  version: 0.2.0
   host: ${SERVER_HOST}
   port: ${SERVER_PORT}
   mcp_path: /mcp
@@ -192,7 +192,9 @@ Important behavior:
 - `health_check` is always allowed.
 - Anonymous callers may only call tools listed in `anonymous_allowed_tools`.
 - High-risk tools need `high_risk_allowed_callers`.
-- `matrix_send_text`, `matrix_send_audio`, and `matrix_send_image` require an allowlisted `room_id`.
+- `matrix_send_text`, `matrix_send_audio`, and `matrix_send_image` require an
+  allowlisted `room_id` only when a Matrix room allowlist is non-empty. An empty
+  `policy.allowed_matrix_rooms` value means all rooms are allowed.
 - `printer_print_file` requires an allowlisted `printer_id`.
 
 Example high-risk allowlist:
@@ -504,6 +506,17 @@ with `matrix account is not configured`. Account-level `homeserver` overrides
 `matrix_send_image` accepts readable image artifacts whose MIME type appears in
 `modules.matrix.allowed_image_mime_types`; when omitted, it defaults to
 `image/png`, `image/jpeg`, and `image/webp`.
+
+Add another Matrix-capable caller with:
+
+```powershell
+python tools/add_matrix_agent.py agent3 --matrix-access-token <matrix-access-token>
+```
+
+The script updates `config/config.yaml` and `.env`: it adds a `callers.agent3`
+entry with a generated MCP Bearer token environment variable, maps the caller
+to `modules.matrix.accounts.agent3`, and grants the Matrix send tools in
+`policy.high_risk_allowed_callers`.
 
 ## Printer Module
 

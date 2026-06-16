@@ -73,12 +73,9 @@ class PolicyEngine:
         if caller.caller_id == "anonymous" and tool_name not in anonymous_allowed:
             return PolicyDecision("deny", "anonymous caller is not allowed for this tool", ("anonymous",))
         if tool_name in {"matrix_send_text", "matrix_send_audio", "matrix_send_image"}:
-            allowed_rooms = set(
-                self.settings.policy.get("allowed_matrix_rooms", [])
-                or self.settings.modules.get("matrix", {}).get("allowed_rooms", [])
-            )
+            allowed_rooms = _matrix_allowed_rooms(self.settings)
             room_id = arguments.get("room_id")
-            if not isinstance(room_id, str) or room_id not in allowed_rooms:
+            if not isinstance(room_id, str) or (allowed_rooms and room_id not in allowed_rooms):
                 return PolicyDecision("deny", "matrix room is not allowlisted", ("matrix_room",))
         if tool_name == "printer_print_file":
             allowed_printers = set(
@@ -110,3 +107,12 @@ class PolicyEngine:
     def require_allowed(self, decision: PolicyDecision) -> None:
         if not decision.allowed:
             raise GatewayError(POLICY_DENIED, decision.reason, retryable=False)
+
+
+def _matrix_allowed_rooms(settings: Any) -> set[str]:
+    rooms = settings.policy.get("allowed_matrix_rooms")
+    if rooms is None:
+        rooms = settings.modules.get("matrix", {}).get("allowed_rooms", [])
+    if not isinstance(rooms, list):
+        return {""}
+    return {room for room in rooms if isinstance(room, str) and room}

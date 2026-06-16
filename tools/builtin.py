@@ -42,7 +42,7 @@ async def health_check(arguments: dict[str, Any], ctx: RequestContext) -> dict[s
     return success(
         request_id=ctx.request_id,
         server=ctx.config.server["name"],
-        version=str(ctx.config.server.get("version", "0.1.0")),
+        version=str(ctx.config.server.get("version", "0.2.0")),
         modules=ctx.config.enabled_modules(),
     )
 

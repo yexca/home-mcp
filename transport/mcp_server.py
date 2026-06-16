@@ -174,7 +174,7 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
                     "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": {
                         "name": self.server.services.config.server.get("name", "home"),
-                        "version": str(self.server.services.config.server.get("version", "0.1.0")),
+                        "version": str(self.server.services.config.server.get("version", "0.2.0")),
                     },
                 },
             )

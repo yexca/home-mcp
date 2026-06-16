@@ -140,10 +140,20 @@ def _configured_string(value: Any) -> str | None:
 def _validated_room(room_id: Any, ctx: RequestContext) -> str:
     if not isinstance(room_id, str) or not room_id:
         raise GatewayError(INVALID_ARGUMENT, "room_id is required")
-    allowed_rooms = set(ctx.config.policy.get("allowed_matrix_rooms") or ctx.config.modules.get("matrix", {}).get("allowed_rooms") or [])
-    if room_id not in allowed_rooms:
+    allowed_rooms = _configured_rooms(ctx.config.policy.get("allowed_matrix_rooms"))
+    if allowed_rooms is None:
+        allowed_rooms = _configured_rooms(ctx.config.modules.get("matrix", {}).get("allowed_rooms"))
+    if allowed_rooms and room_id not in allowed_rooms:
         raise GatewayError(POLICY_DENIED, "matrix room is not allowlisted", retryable=False)
     return room_id
+
+
+def _configured_rooms(value: Any) -> set[str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        return {""}
+    return {room for room in value if isinstance(room, str) and room}
 
 
 def _validated_text(text: Any, max_chars: int, field: str) -> str:

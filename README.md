@@ -125,7 +125,7 @@ Currently used module tools:
 - `image_generate`, `image_edit`: generate or edit images and store results as image artifacts.
 - `localimage_generate`: generate images through a local ComfyUI workflow and store results as image artifacts.
 - `tts_synthesize`: synthesize text into an audio artifact.
-- `matrix_send_text`, `matrix_send_audio`, `matrix_send_image`: send to allowlisted Matrix rooms.
+- `matrix_send_text`, `matrix_send_audio`, `matrix_send_image`: send to Matrix rooms allowed by policy.
 - `printer_print_file`: send allowlisted artifacts to configured printers.
 
 Matrix sender accounts are configured server-side. The tools do not accept a
@@ -154,6 +154,22 @@ Selection order is: `caller_accounts[caller_id]`, then direct `caller_id`, then
 the matching `accounts[account_key]`, then legacy `modules.matrix.access_token`
 as the default/fallback sender. Room allowlists and high-risk caller policy
 still apply before any Matrix send.
+
+To add another Matrix-capable caller automatically:
+
+```powershell
+python tools/add_matrix_agent.py agent3 --matrix-access-token <matrix-access-token>
+```
+
+The script updates `config/config.yaml` and `.env`, creates a generated MCP
+Bearer token under `GATEWAY_TOKEN_AGENT3`, maps `agent3` to
+`${AGENT3_MATRIX_ACCESS_TOKEN}`, and grants the Matrix send tools to that
+caller. Use `--allow-all-rooms` when you want `policy.allowed_matrix_rooms: []`.
+An empty Matrix room allowlist means all rooms are allowed; a non-empty list
+restricts sends to those room IDs.
+
+`docker-compose.yml` loads `.env` with `env_file`, so generated agent token
+variables are available in Docker without editing the Compose file.
 
 ## Authentication And Policy
 

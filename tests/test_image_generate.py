@@ -220,7 +220,7 @@ class ImageGenerateServiceTests(unittest.TestCase):
 
         self.assertEqual(downloaded.data, PNG_BYTES)
         self.assertEqual(downloaded.mime_type, "image/png")
-        self.assertIn("home-mcp-gateway/0.1", ImageDownloadHTTPRequestHandler.user_agent)
+        self.assertIn("home-mcp-gateway/0.2.0", ImageDownloadHTTPRequestHandler.user_agent)
         self.assertIn("*/*", ImageDownloadHTTPRequestHandler.accept_header)
 
     def test_download_image_url_http_error_keeps_status_without_signed_url(self) -> None:
@@ -495,7 +495,7 @@ class ImageDownloadHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         type(self).user_agent = self.headers.get("User-Agent", "")
         type(self).accept_header = self.headers.get("Accept", "")
-        if type(self).user_agent != "home-mcp-gateway/0.1":
+        if type(self).user_agent != "home-mcp-gateway/0.2.0":
             self.send_response(403)
             self.end_headers()
             return

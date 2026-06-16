@@ -1,6 +1,6 @@
 server:
   name: home_mcp_gateway
-  version: 0.1.0
+  version: 0.2.0
   host: ${SERVER_HOST}
   port: ${SERVER_PORT}
   mcp_path: /mcp
@@ -50,7 +50,15 @@ policy:
   default_allow: false
   anonymous_allowed_tools:
     - health_check
-  high_risk_allowed_callers: {}
+  high_risk_allowed_callers:
+    agent1:
+      - matrix_send_text
+      - matrix_send_image
+      - matrix_send_audio
+    agent2:
+      - matrix_send_text
+      - matrix_send_image
+      - matrix_send_audio
   allowed_matrix_rooms: []
   allowed_printers: []
   printable_mime_types:
@@ -276,6 +284,8 @@ modules:
     homeserver: ${MATRIX_HOMESERVER}
     # Legacy/default sender token. Used when no caller-specific account matches.
     access_token: ${MATRIX_ACCESS_TOKEN}
+    # Recommended for multiple Matrix senders. Add more callers/accounts with:
+    # python tools/add_matrix_agent.py agent1 --matrix-access-token <matrix-token>
     caller_accounts: {}
     accounts: {}
     # Example:
