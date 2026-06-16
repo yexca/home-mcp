@@ -13,7 +13,7 @@ COPY core ./core
 COPY modules ./modules
 COPY tools ./tools
 COPY transport ./transport
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md .env.example ./
 
 RUN mkdir -p /app/artifacts
 

@@ -20,7 +20,7 @@ tree, not the historical phase plans.
 - `core/`: SQLite migrations, jobs, artifacts, policy, audit, IDs, limits, and errors.
 - `modules/`: optional capability modules and provider adapters.
 - `config/`, `.env.example`: runtime config template/user config and
-  environment template.
+  environment defaults.
 - `tests/`: test suite, test configs, and test runner.
 - `deploy/`: Docker image and deployment notes.
 - `tests/`: contract, policy, artifact, provider, module, and transport tests.
@@ -52,7 +52,7 @@ template. When `CONFIG_PATH` is not set, the application auto-loads that file
 if it exists.
 
 For Docker Compose, use the same `config/config.yaml`, edit local tokens in
-`.env`, and run `docker compose up --build`.
+`.env`, keep `SERVER_HOST=0.0.0.0`, and run `docker compose up --build`.
 
 Run tests:
 

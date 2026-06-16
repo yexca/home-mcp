@@ -7,11 +7,12 @@ in SQLite.
 
 The important configuration rule is:
 
-**Users edit `config/config.yaml`.**
+**Users edit `config/config.yaml` and `.env`.**
 
 `config/config.example.yaml` is the template/base configuration. For local use,
 copy it to `config/config.yaml`. Both local Python runs and Docker Compose use
-that same file. Root-level `.env` keeps tokens and provider secrets.
+that same file. Root-level `.env` keeps tokens, provider secrets, service
+startup settings, timeouts, and size limits.
 
 ## Quick Start
 
@@ -55,19 +56,22 @@ Use these files for different purposes:
 | `.env` | Local environment variables for Python and Docker Compose. It is git-ignored. |
 | `tests/config/test.config.yaml` | Test-only config used by `tests/run_tests.ps1`. |
 
-The application loads configuration in this order:
+The application loads settings in this order, with earlier files winning over
+later defaults:
 
-0. Load root `.env` into the process environment without overriding existing variables.
-1. Load `config/config.example.yaml`.
-2. If `CONFIG_PATH` is set, deep-merge that YAML over the base config.
-3. If `CONFIG_PATH` is not set and `config/config.yaml` exists, deep-merge that file instead.
-4. Replace placeholders such as `${IMAGE_API_KEY}` with environment variables.
+1. Load root `.env` into the process environment without overriding existing variables.
+2. Load root `.env.example` for missing environment defaults.
+3. If `CONFIG_PATH` is set, load that YAML as the user config.
+4. If `CONFIG_PATH` is not set and `config/config.yaml` exists, load that YAML as the user config.
+5. Fill missing YAML keys from `config/config.example.yaml`.
+6. Replace placeholders such as `${SERVER_PORT}` and `${IMAGE_API_KEY}`.
 
 Common user-editable sections are:
 
-- `server.host`, `server.port`
-- `artifacts.root`, `artifacts.public_base_url`
-- `database.path`
+- `SERVER_HOST`, `SERVER_PORT`
+- `ARTIFACT_ROOT`, `ARTIFACT_PUBLIC_BASE_URL`, artifact size and URL TTL limits
+- `DATABASE_PATH`, `DATABASE_BUSY_TIMEOUT_MS`
+- tool timeout and rate limit variables such as `SYNC_TOOL_TIMEOUT_SECONDS` and `MATRIX_MESSAGES_PER_ROOM_PER_MINUTE`
 - `callers.*.token_env`
 - `policy.high_risk_allowed_callers`
 - `modules.image`, `modules.localimage`
@@ -154,6 +158,10 @@ docker compose up --build
 
 Compose automatically reads `.env`, mounts `config/config.yaml`, and stores
 artifacts plus SQLite metadata under `./artifacts`.
+
+For Docker, keep `SERVER_HOST=0.0.0.0` in `.env` so the published port can
+accept host connections. Clients can still use `http://127.0.0.1:8787/mcp`
+from the host machine.
 
 When ZeroClaw also runs in Docker, artifact `download_url` values must point to
 an address reachable from the ZeroClaw container. The gateway derives download

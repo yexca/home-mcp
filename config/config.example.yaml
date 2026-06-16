@@ -1,40 +1,40 @@
 server:
   name: home_mcp_gateway
   version: 0.1.0
-  host: 127.0.0.1
-  port: 8787
+  host: ${SERVER_HOST}
+  port: ${SERVER_PORT}
   mcp_path: /mcp
   artifact_path: /artifacts
 
 artifacts:
-  root: ./artifacts
-  public_base_url: http://127.0.0.1:8787/artifacts
+  root: ${ARTIFACT_ROOT}
+  public_base_url: ${ARTIFACT_PUBLIC_BASE_URL}
   signed_url_secret_env: ARTIFACT_SIGNING_SECRET
-  signed_url_ttl_seconds: 300
+  signed_url_ttl_seconds: ${ARTIFACT_SIGNED_URL_TTL_SECONDS}
   retention_days:
     image: 30
     audio: 30
     document: 30
     print: 7
     temp: 1
-  max_artifact_bytes: 52428800
-  max_inline_artifact_bytes: 5242880
+  max_artifact_bytes: ${MAX_ARTIFACT_BYTES}
+  max_inline_artifact_bytes: ${MAX_INLINE_ARTIFACT_BYTES}
 
 database:
-  path: ./artifacts/metadata.sqlite3
+  path: ${DATABASE_PATH}
   wal: true
-  busy_timeout_ms: 5000
+  busy_timeout_ms: ${DATABASE_BUSY_TIMEOUT_MS}
 
 limits:
-  sync_tool_timeout_seconds: 120
-  image_jobs_per_caller_per_day: 20
-  tts_jobs_per_caller_per_day: 100
-  print_jobs_per_caller_per_day: 20
-  max_image_jobs_global: 2
-  max_image_jobs_per_caller: 1
-  max_tts_jobs_global: 2
-  matrix_messages_per_room_per_minute: 5
-  max_print_jobs_global: 1
+  sync_tool_timeout_seconds: ${SYNC_TOOL_TIMEOUT_SECONDS}
+  image_jobs_per_caller_per_day: ${IMAGE_JOBS_PER_CALLER_PER_DAY}
+  tts_jobs_per_caller_per_day: ${TTS_JOBS_PER_CALLER_PER_DAY}
+  print_jobs_per_caller_per_day: ${PRINT_JOBS_PER_CALLER_PER_DAY}
+  max_image_jobs_global: ${MAX_IMAGE_JOBS_GLOBAL}
+  max_image_jobs_per_caller: ${MAX_IMAGE_JOBS_PER_CALLER}
+  max_tts_jobs_global: ${MAX_TTS_JOBS_GLOBAL}
+  matrix_messages_per_room_per_minute: ${MATRIX_MESSAGES_PER_ROOM_PER_MINUTE}
+  max_print_jobs_global: ${MAX_PRINT_JOBS_GLOBAL}
 
 callers:
   host_assistant:
@@ -162,8 +162,8 @@ modules:
       - jpeg
       - webp
     max_prompt_chars: 4000
-    total_timeout_seconds: 900
-    stale_job_grace_seconds: 30
+    total_timeout_seconds: ${LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS}
+    stale_job_grace_seconds: ${LOCAL_IMAGE_STALE_JOB_GRACE_SECONDS}
     quality_presets:
       draft:
         steps: 12
@@ -222,12 +222,12 @@ modules:
       - jpeg
       - webp
     max_prompt_chars: 4000
-    total_timeout_seconds: 600
-    stale_job_grace_seconds: 30
-    max_download_bytes: 10485760
-    max_edit_input_images: 4
-    max_edit_input_image_bytes: 10485760
-    max_edit_total_image_bytes: 20971520
+    total_timeout_seconds: ${IMAGE_TOTAL_TIMEOUT_SECONDS}
+    stale_job_grace_seconds: ${IMAGE_STALE_JOB_GRACE_SECONDS}
+    max_download_bytes: ${IMAGE_MAX_DOWNLOAD_BYTES}
+    max_edit_input_images: ${IMAGE_MAX_EDIT_INPUT_IMAGES}
+    max_edit_input_image_bytes: ${IMAGE_MAX_EDIT_INPUT_IMAGE_BYTES}
+    max_edit_total_image_bytes: ${IMAGE_MAX_EDIT_TOTAL_IMAGE_BYTES}
     allowed_edit_input_mime_types:
       - image/png
       - image/jpeg
@@ -237,7 +237,7 @@ modules:
       base_url: ${IMAGE_API_BASE_URL}
       model: ${IMAGE_API_MODEL}
       api_key: ${IMAGE_API_KEY}
-      timeout_seconds: 60
+      timeout_seconds: ${IMAGE_PROVIDER_TIMEOUT_SECONDS}
       # Hosts that may appear in provider response image URLs. Keep this
       # explicit and include CDN/image hosts, not only the provider API host.
       allowed_image_url_hosts:
@@ -265,18 +265,18 @@ modules:
     default_speed: 1.0
     min_speed: 0.5
     max_speed: 2.0
-    total_timeout_seconds: 120
-    stale_job_grace_seconds: 30
+    total_timeout_seconds: ${TTS_TOTAL_TIMEOUT_SECONDS}
+    stale_job_grace_seconds: ${TTS_STALE_JOB_GRACE_SECONDS}
     local_http:
       url: ${TTS_LOCAL_HTTP_URL}
       api_key: ${TTS_API_KEY}
-      timeout_seconds: 30
+      timeout_seconds: ${TTS_PROVIDER_TIMEOUT_SECONDS}
   matrix:
     enabled: false
     homeserver: ${MATRIX_HOMESERVER}
     access_token: ${MATRIX_ACCESS_TOKEN}
-    timeout_seconds: 30
-    max_text_chars: 4000
+    timeout_seconds: ${MATRIX_TIMEOUT_SECONDS}
+    max_text_chars: ${MATRIX_MAX_TEXT_CHARS}
     allowed_image_mime_types:
       - image/png
       - image/jpeg
@@ -289,8 +289,8 @@ modules:
       - application/pdf
       - image/png
       - image/jpeg
-    max_file_bytes: 10485760
-    max_copies: 2
+    max_file_bytes: ${PRINTER_MAX_FILE_BYTES}
+    max_copies: ${PRINTER_MAX_COPIES}
     default_duplex: none
     duplex_modes:
       - none
@@ -304,4 +304,4 @@ modules:
     bridge_http:
       url: ${PRINTER_BRIDGE_URL}
       api_key: ${PRINTER_BRIDGE_API_KEY}
-      timeout_seconds: 30
+      timeout_seconds: ${PRINTER_BRIDGE_TIMEOUT_SECONDS}

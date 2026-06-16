@@ -57,16 +57,25 @@ class Settings:
 
 
 def load_settings(config_path: str | None = None) -> Settings:
-    _load_dotenv(Path(".env"))
-    base_path = Path("config/config.example.yaml")
-    data = _load_yaml(base_path)
-    override_path = config_path or os.getenv("CONFIG_PATH") or _default_user_config_path()
-    if override_path:
-        data = _deep_merge(data, _load_yaml(Path(override_path)))
+    _load_env_defaults()
+    data = _load_config_with_defaults(config_path)
     data = _substitute_env(data)
     _apply_env_overrides(data)
     _validate(data)
     return Settings(data)
+
+
+def _load_env_defaults() -> None:
+    _load_dotenv(Path(".env"))
+    _load_dotenv(Path(".env.example"))
+
+
+def _load_config_with_defaults(config_path: str | None = None) -> dict[str, Any]:
+    base_path = Path("config/config.example.yaml")
+    override_path = config_path or os.getenv("CONFIG_PATH") or _default_user_config_path()
+    if override_path:
+        return _deep_fill_defaults(_load_yaml(Path(override_path)), _load_yaml(base_path))
+    return _load_yaml(base_path)
 
 
 def _default_user_config_path() -> str | None:
@@ -110,6 +119,16 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
             result[key] = _deep_merge(result[key], value)
         else:
             result[key] = deepcopy(value)
+    return result
+
+
+def _deep_fill_defaults(data: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
+    result = deepcopy(data)
+    for key, value in defaults.items():
+        if key not in result:
+            result[key] = deepcopy(value)
+        elif isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_fill_defaults(result[key], value)
     return result
 
 

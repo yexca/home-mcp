@@ -1,10 +1,10 @@
 # Configuration
 
-Configuration starts from `config/config.example.yaml`. The local runtime
-override is `config/config.yaml`. If `CONFIG_PATH` is set, that file is loaded
-instead of `config/config.yaml` and deep-merged over the base configuration.
-Root `.env` values are loaded into the process environment without overriding
-existing variables, then `${NAME}` placeholders are substituted after merging.
+Configuration combines environment files and YAML files. Root `.env` is loaded
+first for local secrets and overrides, then `.env.example` fills any missing
+environment defaults. `config/config.yaml` or `CONFIG_PATH` is loaded as user
+YAML, then `config/config.example.yaml` fills missing YAML defaults. After
+merging, `${NAME}` placeholders are substituted from the environment.
 
 For normal local use, create a user config file:
 
@@ -29,11 +29,16 @@ intentionally small and is owned by the test runner.
 
 Load order:
 
-0. Load root `.env` into the process environment without overriding existing variables.
-1. Load `config/config.example.yaml`.
-2. If `CONFIG_PATH` is set, merge that file.
-3. Otherwise, if `config/config.yaml` exists, merge it.
-4. Substitute environment placeholders.
+1. Load root `.env` into the process environment without overriding existing variables.
+2. Load root `.env.example` without overriding existing variables.
+3. If `CONFIG_PATH` is set, load that YAML as the user config.
+4. Otherwise, if `config/config.yaml` exists, load it as the user config.
+5. Fill missing YAML keys from `config/config.example.yaml`.
+6. Substitute environment placeholders.
+
+In practical terms, `.env` wins over `.env.example`, and user YAML wins over
+`config/config.example.yaml`. Existing OS environment variables win over both
+dotenv files.
 
 ## Required Sections
 
@@ -53,32 +58,31 @@ The loader also validates module-specific settings when a module is enabled.
 server:
   name: home_mcp_gateway
   version: 0.1.0
-  host: 127.0.0.1
-  port: 8787
+  host: ${SERVER_HOST}
+  port: ${SERVER_PORT}
   mcp_path: /mcp
   artifact_path: /artifacts
 ```
 
-`host` and `port` are passed directly to `ThreadingHTTPServer`. Because the
-same config is used by Docker Compose, use `0.0.0.0` when the service must be
-reachable through the published Docker port. Local clients can still connect to
-`http://127.0.0.1:8787`.
+`host` and `port` are passed directly to `ThreadingHTTPServer`. Set
+`SERVER_HOST=0.0.0.0` for Docker or LAN exposure; local clients can still
+connect to `http://127.0.0.1:8787`.
 
 ## Artifacts And Database
 
 ```yaml
 artifacts:
-  root: ./artifacts
-  public_base_url: http://127.0.0.1:8787/artifacts
+  root: ${ARTIFACT_ROOT}
+  public_base_url: ${ARTIFACT_PUBLIC_BASE_URL}
   signed_url_secret_env: ARTIFACT_SIGNING_SECRET
-  signed_url_ttl_seconds: 300
-  max_artifact_bytes: 52428800
-  max_inline_artifact_bytes: 5242880
+  signed_url_ttl_seconds: ${ARTIFACT_SIGNED_URL_TTL_SECONDS}
+  max_artifact_bytes: ${MAX_ARTIFACT_BYTES}
+  max_inline_artifact_bytes: ${MAX_INLINE_ARTIFACT_BYTES}
 
 database:
-  path: ./artifacts/metadata.sqlite3
+  path: ${DATABASE_PATH}
   wal: true
-  busy_timeout_ms: 5000
+  busy_timeout_ms: ${DATABASE_BUSY_TIMEOUT_MS}
 ```
 
 Artifact `download_url` values are derived from the incoming HTTP request Host
@@ -163,7 +167,8 @@ docker compose up --build
 Docker Compose reads `.env` for `${NAME}` substitutions in
 `docker-compose.yml`, then passes those values into the container environment.
 Local Python runs also load `.env` directly before configuration placeholders
-are substituted.
+are substituted. If a key is missing from `.env`, `.env.example` supplies the
+repository default.
 
 ## Policy
 
@@ -204,11 +209,11 @@ the process restarts.
 
 ```yaml
 limits:
-  sync_tool_timeout_seconds: 120
-  image_jobs_per_caller_per_day: 20
-  tts_jobs_per_caller_per_day: 100
-  print_jobs_per_caller_per_day: 20
-  matrix_messages_per_room_per_minute: 5
+  sync_tool_timeout_seconds: ${SYNC_TOOL_TIMEOUT_SECONDS}
+  image_jobs_per_caller_per_day: ${IMAGE_JOBS_PER_CALLER_PER_DAY}
+  tts_jobs_per_caller_per_day: ${TTS_JOBS_PER_CALLER_PER_DAY}
+  print_jobs_per_caller_per_day: ${PRINT_JOBS_PER_CALLER_PER_DAY}
+  matrix_messages_per_room_per_minute: ${MATRIX_MESSAGES_PER_ROOM_PER_MINUTE}
 ```
 
 Some configured global concurrency keys exist in config for future hardening,
@@ -246,13 +251,13 @@ modules:
       - png
       - jpeg
       - webp
-    total_timeout_seconds: 600
-    stale_job_grace_seconds: 30
+    total_timeout_seconds: ${IMAGE_TOTAL_TIMEOUT_SECONDS}
+    stale_job_grace_seconds: ${IMAGE_STALE_JOB_GRACE_SECONDS}
     ikun:
       base_url: ${IMAGE_API_BASE_URL}
       model: ${IMAGE_API_MODEL}
       api_key: ${IMAGE_API_KEY}
-      timeout_seconds: 60
+      timeout_seconds: ${IMAGE_PROVIDER_TIMEOUT_SECONDS}
       allowed_image_url_hosts:
         - img.opcheiben.cn
 ```
@@ -344,7 +349,7 @@ modules:
     allowed_styles: [default, anime, realistic, illustration]
     default_output_format: png
     allowed_output_formats: [png, jpeg, webp]
-    total_timeout_seconds: 900
+    total_timeout_seconds: ${LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS}
     comfyui:
       base_url: ${LOCAL_IMAGE_COMFYUI_BASE_URL}
       allowed_hosts:
@@ -397,12 +402,12 @@ modules:
     languages: [ja-JP, en-US]
     default_format: wav
     allowed_formats: [ogg, mp3, wav]
-    total_timeout_seconds: 120
-    stale_job_grace_seconds: 30
+    total_timeout_seconds: ${TTS_TOTAL_TIMEOUT_SECONDS}
+    stale_job_grace_seconds: ${TTS_STALE_JOB_GRACE_SECONDS}
     local_http:
       url: ${TTS_LOCAL_HTTP_URL}
       api_key: ${TTS_API_KEY}
-      timeout_seconds: 30
+      timeout_seconds: ${TTS_PROVIDER_TIMEOUT_SECONDS}
 ```
 
 `local_http` sends JSON to the configured URL and expects an audio response with
@@ -425,7 +430,7 @@ modules:
     enabled: true
     homeserver: ${MATRIX_HOMESERVER}
     access_token: ${MATRIX_ACCESS_TOKEN}
-    timeout_seconds: 30
+    timeout_seconds: ${MATRIX_TIMEOUT_SECONDS}
     allowed_image_mime_types:
       - image/png
       - image/jpeg
@@ -452,11 +457,11 @@ modules:
       - application/pdf
       - image/png
       - image/jpeg
-    max_copies: 2
+    max_copies: ${PRINTER_MAX_COPIES}
     bridge_http:
       url: ${PRINTER_BRIDGE_URL}
       api_key: ${PRINTER_BRIDGE_API_KEY}
-      timeout_seconds: 30
+      timeout_seconds: ${PRINTER_BRIDGE_TIMEOUT_SECONDS}
 ```
 
 The provider calls:

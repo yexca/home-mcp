@@ -75,6 +75,97 @@ class ConfigTests(unittest.TestCase):
             if old_config_path is not None:
                 os.environ["CONFIG_PATH"] = old_config_path
 
+    def test_env_example_supplies_defaults_and_env_overrides_it(self) -> None:
+        old_cwd = Path.cwd()
+        old_config_path = os.environ.pop("CONFIG_PATH", None)
+        previous_host = os.environ.pop("TEST_SERVER_HOST", None)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "config").mkdir()
+                (root / ".env.example").write_text("TEST_SERVER_HOST=0.0.0.0\n", encoding="utf-8")
+                (root / ".env").write_text("TEST_SERVER_HOST=127.0.0.1\n", encoding="utf-8")
+                (root / "config" / "config.example.yaml").write_text(
+                    "\n".join(
+                        [
+                            "server:",
+                            "  host: ${TEST_SERVER_HOST}",
+                            "  port: 8787",
+                            "artifacts:",
+                            "  root: ./artifacts",
+                            "database:",
+                            "  path: ./artifacts/metadata.sqlite3",
+                            "limits: {}",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                os.chdir(root)
+                try:
+                    settings = load_settings()
+                    self.assertEqual(settings.server["host"], "127.0.0.1")
+                finally:
+                    os.chdir(old_cwd)
+        finally:
+            os.chdir(old_cwd)
+            os.environ.pop("TEST_SERVER_HOST", None)
+            if previous_host is not None:
+                os.environ["TEST_SERVER_HOST"] = previous_host
+            if old_config_path is not None:
+                os.environ["CONFIG_PATH"] = old_config_path
+
+    def test_config_yaml_overrides_config_example_defaults(self) -> None:
+        old_cwd = Path.cwd()
+        old_config_path = os.environ.pop("CONFIG_PATH", None)
+        previous_port = os.environ.pop("TEST_SERVER_PORT", None)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "config").mkdir()
+                (root / ".env.example").write_text("TEST_SERVER_PORT=8787\n", encoding="utf-8")
+                (root / "config" / "config.example.yaml").write_text(
+                    "\n".join(
+                        [
+                            "server:",
+                            "  host: 127.0.0.1",
+                            "  port: ${TEST_SERVER_PORT}",
+                            "artifacts:",
+                            "  root: ./base-artifacts",
+                            "database:",
+                            "  path: ./base-artifacts/metadata.sqlite3",
+                            "limits: {}",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                (root / "config" / "config.yaml").write_text(
+                    "\n".join(
+                        [
+                            "server:",
+                            "  port: 9898",
+                            "artifacts:",
+                            "  root: ./user-artifacts",
+                            "database:",
+                            "  path: ./user-artifacts/metadata.sqlite3",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                os.chdir(root)
+                try:
+                    settings = load_settings()
+                    self.assertEqual(settings.server["port"], 9898)
+                    self.assertEqual(settings.artifacts["root"], "./user-artifacts")
+                finally:
+                    os.chdir(old_cwd)
+        finally:
+            os.chdir(old_cwd)
+            os.environ.pop("TEST_SERVER_PORT", None)
+            if previous_port is not None:
+                os.environ["TEST_SERVER_PORT"] = previous_port
+            if old_config_path is not None:
+                os.environ["CONFIG_PATH"] = old_config_path
+
     def test_image_base_url_rejects_images_endpoint_path(self) -> None:
         previous = {
             "IMAGE_API_BASE_URL": os.environ.get("IMAGE_API_BASE_URL"),
