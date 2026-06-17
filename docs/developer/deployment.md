@@ -1,4 +1,4 @@
-# Deployment Notes
+# Deployment
 
 ## Local Compose
 
@@ -58,12 +58,12 @@ Use the same base for the ZeroClaw MCP URL, replacing `/artifacts` with `/mcp`.
 
 ## Configuration
 
-- Compose mounts `config/config.yaml` into the container.
+- Compose mounts generated agent config and ComfyUI workflow config into the container.
 - Compose reads local values from the project-root `.env`, created from
   `.env.example`.
 - `ARTIFACT_SIGNING_SECRET` signs short-lived artifact download URLs.
 - Artifacts and SQLite metadata live under the project-root `./artifacts`
-  directory, matching the default user config.
+  directory, matching the default environment values.
 - Secrets are supplied only through environment variables, never through checked-in YAML.
 - Keep high-risk tools out of ZeroClaw auto approve by default.
 

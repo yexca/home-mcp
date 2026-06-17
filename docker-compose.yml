@@ -2,7 +2,7 @@ services:
   home-mcp:
     build:
       context: .
-      dockerfile: deploy/Dockerfile
+      dockerfile: Dockerfile
     image: yexca/home-mcp-gateway:0.2.1
     container_name: home-mcp-gateway
     env_file:
@@ -12,7 +12,6 @@ services:
     ports:
       - "8787:8787"
     volumes:
-      - ./config/config.yaml:/app/config/config.yaml:ro
       - ./config/agent:/app/config/agent:ro
       - ./:/app/agent-env:ro
       - ./config/comfyui:/app/config/comfyui:ro

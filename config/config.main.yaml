@@ -284,8 +284,8 @@ modules:
     homeserver: ${MATRIX_HOMESERVER}
     # Legacy/default sender token. Used when no caller-specific account matches.
     access_token: ${MATRIX_ACCESS_TOKEN}
-    # Recommended for multiple Matrix senders. Add more callers/accounts with:
-    # python tools/add_matrix_agent.py agent1 --matrix-access-token <matrix-token>
+    # Recommended for multiple Matrix senders. Set ENABLED_AGENTS in .env and run:
+    # apply_agent.bat
     caller_accounts: {}
     accounts: {}
     # Example:

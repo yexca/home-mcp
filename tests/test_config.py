@@ -88,7 +88,7 @@ class ConfigTests(unittest.TestCase):
                 root = Path(tmp)
                 (root / "config").mkdir()
                 (root / ".env.example").write_text("TTS_MODULE_ENABLED=false\n", encoding="utf-8")
-                (root / "config" / "config.example.yaml").write_text(
+                (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
                             "server:",
@@ -136,7 +136,7 @@ class ConfigTests(unittest.TestCase):
                 root = Path(tmp)
                 (root / "config").mkdir()
                 (root / ".env.example").write_text("TTS_MODULE_ENABLED=false\n", encoding="utf-8")
-                (root / "config" / "config.example.yaml").write_text(
+                (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
                             "server:",
@@ -175,14 +175,14 @@ class ConfigTests(unittest.TestCase):
             if old_config_path is not None:
                 os.environ["CONFIG_PATH"] = old_config_path
 
-    def test_auto_loads_config_yaml_when_config_path_is_not_set(self) -> None:
+    def test_default_loads_main_config_when_config_path_is_not_set(self) -> None:
         old_cwd = Path.cwd()
         old_config_path = os.environ.pop("CONFIG_PATH", None)
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 (root / "config").mkdir()
-                (root / "config" / "config.example.yaml").write_text(
+                (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
                             "server:",
@@ -213,9 +213,9 @@ class ConfigTests(unittest.TestCase):
                 os.chdir(root)
                 try:
                     settings = load_settings()
-                    self.assertEqual(settings.server["port"], 9898)
-                    self.assertEqual(settings.artifacts["root"], "./user-artifacts")
-                    self.assertEqual(settings.database["path"], "./user-artifacts/metadata.sqlite3")
+                    self.assertEqual(settings.server["port"], 8787)
+                    self.assertEqual(settings.artifacts["root"], "./base-artifacts")
+                    self.assertEqual(settings.database["path"], "./base-artifacts/metadata.sqlite3")
                 finally:
                     os.chdir(old_cwd)
         finally:
@@ -233,7 +233,7 @@ class ConfigTests(unittest.TestCase):
                 (root / "config").mkdir()
                 (root / ".env.example").write_text("TEST_SERVER_HOST=0.0.0.0\n", encoding="utf-8")
                 (root / ".env").write_text("TEST_SERVER_HOST=127.0.0.1\n", encoding="utf-8")
-                (root / "config" / "config.example.yaml").write_text(
+                (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
                             "server:",
@@ -303,7 +303,7 @@ class ConfigTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 (root / ".env.example").write_text("MATRIX_HOMESERVER=http://matrix.test\n", encoding="utf-8")
-                (root / "config" / "config.example.yaml").write_text(
+                (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
                             "server:",
@@ -377,7 +377,7 @@ class ConfigTests(unittest.TestCase):
                     ),
                     encoding="utf-8",
                 )
-                (root / "config" / "config.example.yaml").write_text(
+                (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
                             "server: {host: 127.0.0.1, port: 8787}",
@@ -422,7 +422,7 @@ class ConfigTests(unittest.TestCase):
                     "matrix:\n  enabled: true\n  access_token_env: AGENT1_MATRIX_ACCESS_TOKEN\n",
                     encoding="utf-8",
                 )
-                (root / "config" / "config.example.yaml").write_text(
+                (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
                             "server: {host: 127.0.0.1, port: 8787}",
@@ -467,7 +467,7 @@ class ConfigTests(unittest.TestCase):
             if old_config_path is not None:
                 os.environ["CONFIG_PATH"] = old_config_path
 
-    def test_config_yaml_overrides_config_example_defaults(self) -> None:
+    def test_config_path_overrides_main_config_defaults(self) -> None:
         old_cwd = Path.cwd()
         old_config_path = os.environ.pop("CONFIG_PATH", None)
         previous_port = os.environ.pop("TEST_SERVER_PORT", None)
@@ -476,7 +476,7 @@ class ConfigTests(unittest.TestCase):
                 root = Path(tmp)
                 (root / "config").mkdir()
                 (root / ".env.example").write_text("TEST_SERVER_PORT=8787\n", encoding="utf-8")
-                (root / "config" / "config.example.yaml").write_text(
+                (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
                             "server:",
@@ -491,7 +491,7 @@ class ConfigTests(unittest.TestCase):
                     ),
                     encoding="utf-8",
                 )
-                (root / "config" / "config.yaml").write_text(
+                (root / "custom.config.yaml").write_text(
                     "\n".join(
                         [
                             "server:",
@@ -506,6 +506,7 @@ class ConfigTests(unittest.TestCase):
                 )
                 os.chdir(root)
                 try:
+                    os.environ["CONFIG_PATH"] = "custom.config.yaml"
                     settings = load_settings()
                     self.assertEqual(settings.server["port"], 9898)
                     self.assertEqual(settings.artifacts["root"], "./user-artifacts")
@@ -561,7 +562,7 @@ class ConfigTests(unittest.TestCase):
                     ),
                     encoding="utf-8",
                 )
-                (root / "config" / "config.example.yaml").write_text(
+                (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
                             "server:",

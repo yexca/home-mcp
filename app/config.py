@@ -147,16 +147,11 @@ def _load_env_defaults() -> EnvDefaults:
 
 
 def _load_config_with_defaults(config_path: str | None = None) -> dict[str, Any]:
-    base_path = Path("config/config.example.yaml")
-    override_path = config_path or os.getenv("CONFIG_PATH") or _default_user_config_path()
+    base_path = Path("config/config.main.yaml")
+    override_path = config_path or os.getenv("CONFIG_PATH")
     if override_path:
         return _deep_fill_defaults(_load_yaml(Path(override_path)), _load_yaml(base_path))
     return _load_yaml(base_path)
-
-
-def _default_user_config_path() -> str | None:
-    path = Path("config/config.yaml")
-    return str(path) if path.is_file() else None
 
 
 def _parse_enabled_agents(value: str) -> tuple[str, ...]:

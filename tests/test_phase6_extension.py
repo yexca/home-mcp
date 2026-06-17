@@ -77,13 +77,15 @@ class Phase6ModuleExtensionTests(unittest.TestCase):
 
     def test_release_hardening_files_exist(self) -> None:
         required = [
-            Path("deploy/Dockerfile"),
+            Path("Dockerfile"),
             Path("docker-compose.yml"),
-            Path("config/config.example.yaml"),
+            Path("config/config.main.yaml"),
             Path(".env.example"),
-            Path("deploy/README.md"),
-            Path("dev_documents/module-extension.md"),
-            Path("dev_documents/release-checklist.md"),
+            Path("docs/README.md"),
+            Path("docs/developer/README.md"),
+            Path("docs/developer/deployment.md"),
+            Path("docs/original/module-extension.md"),
+            Path("docs/original/release-checklist.md"),
             Path("CHANGELOG.md"),
         ]
 

@@ -1,127 +1,44 @@
 # home_mcp_gateway
 
-`home_mcp_gateway` 是一个本地 MCP 网关，提供 HTTP/SSE MCP 入口，按策略分发工具调用，把生成文件保存为 artifact，并用 SQLite 记录 job 和审计事件。
+`home_mcp_gateway` 是一个本地 HTTP/SSE MCP 网关，可供 ZeroClaw 和其他 MCP 客户端使用。它把工具调用、权限策略、artifact 存储、job 状态和审计记录集中在一个本地 MCP 入口后面。
 
-最重要的配置规则：
-
-**用户编辑 `config/config.yaml` 和根目录 `.env`。**
-
-`config/config.example.yaml` 是配置模板。复制成 `config/config.yaml` 后，本地 Python 运行和 Docker Compose 都使用同一个用户配置文件。token、API key 等敏感值放在根目录 `.env`，不要写进 YAML。
+普通用户只需要编辑 `.env`。仓库中的 `config/config.main.yaml` 是程序主配置基线，除非你正在开发网关本身，否则不建议修改它。
 
 ## 快速开始
 
 要求：
 
-- Python 3.11 或更新版本。
-- `PyYAML`。
+- Docker 和 Docker Compose
+- Windows PowerShell，用于辅助脚本
 
-创建本地配置：
+创建本地环境变量文件：
 
 ```powershell
-Copy-Item config/config.example.yaml config/config.yaml
 Copy-Item .env.example .env
 ```
 
-编辑 `config/config.yaml` 和 `.env`，然后运行：
+编辑 `.env`，至少设置这些值：
+
+```dotenv
+GATEWAY_TOKEN_HOST=change-this
+GATEWAY_TOKEN_ROLE_DEFAULT=change-this-role
+ARTIFACT_SIGNING_SECRET=change-this-secret
+```
+
+使用 Docker Compose 构建并运行：
 
 ```powershell
-python -m pip install -e .
-python -m app.main
+docker compose up -d --build
 ```
 
 默认入口是 `http://127.0.0.1:8787`。
 
-检查状态：
+检查服务状态：
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8787/healthz
 Invoke-RestMethod http://127.0.0.1:8787/readyz
 ```
-
-## 配置文件
-
-| 文件 | 用途 |
-| --- | --- |
-| `config/config.example.yaml` | 配置模板和基础默认值，可以提交。 |
-| `config/config.yaml` | 用户实际运行配置，本地 Python 和 Docker Compose 共用，已加入 git ignore。 |
-| `.env.example` | 环境变量模板，可以提交。 |
-| `.env` | 用户本地 token、provider key 等敏感环境变量，已加入 git ignore。 |
-| `tests/config/test.config.yaml` | 测试脚本专用配置，不是用户运行配置。 |
-
-加载顺序：
-
-1. 先读取根目录 `.env`，但不会覆盖已经存在的环境变量。
-2. 加载 `config/config.example.yaml`。
-3. 如果设置了 `CONFIG_PATH`，合并该路径指向的 YAML；否则如果 `config/config.yaml` 存在，就合并它。
-4. 把 `${IMAGE_API_KEY}` 这类占位符替换成环境变量。
-
-常用的用户配置项包括：
-
-- `server.host`、`server.port`
-- `artifacts.root`、`artifacts.public_base_url`
-- `database.path`
-- `callers.*.token_env`
-- `policy.high_risk_allowed_callers`
-- `modules.image`、`modules.localimage`
-
-目前实际使用的模块只有 `image` 和 `localimage`。仓库中可能还保留其他模块目录，但它们不是当前实际使用范围。
-
-## 可用工具
-
-内置工具：
-
-- `health_check`：返回服务状态和已启用模块状态。
-- `artifact_get`：返回 artifact 元数据和带签名的下载链接。
-- `artifact_get_image`：读取可内联返回的图片 artifact。
-- `job_status`：查询当前调用者可见的 job。
-
-当前实际使用的模块工具：
-
-- `image_generate`、`image_edit`：生成或编辑图片，并保存为图片 artifact。
-- `localimage_generate`：通过本地 ComfyUI 工作流生成图片，并保存为图片 artifact。
-
-现阶段实际模块范围仅限 `image` 和 `localimage`。
-
-## Matrix 多账号发送配置
-
-Matrix 工具仍然只接收原有参数，例如 `room_id`、`text`、`audio_artifact_id`、`image_artifact_id` 和可选 `body`，不会接收 Matrix `access_token`。
-
-可以在服务端配置里按 MCP caller 自动选择 Matrix 发送账号：
-
-```yaml
-modules:
-  matrix:
-    enabled: true
-    homeserver: ${MATRIX_HOMESERVER}
-    access_token: ${MATRIX_ACCESS_TOKEN}
-    caller_accounts:
-      role_default: agent1
-      agent1: agent1
-      agent2: agent2
-    accounts:
-      agent1:
-        homeserver: ${MATRIX_HOMESERVER}
-        access_token: ${AGENT1_MATRIX_ACCESS_TOKEN}
-      agent2:
-        access_token: ${AGENT2_MATRIX_ACCESS_TOKEN}
-```
-
-选择顺序是：先用 `caller_accounts[caller_id]` 映射到账号 key；没有映射时直接使用 `caller_id`；再查 `accounts[account_key]`；如果没有对应账号 token，则回退到旧的 `modules.matrix.access_token`。房间 allowlist 和 high-risk caller policy 仍然会先执行，不会因为多账号配置被绕过。
-
-## Docker
-
-Docker Compose 使用同一个 `config/config.yaml`：
-
-```powershell
-Copy-Item config/config.example.yaml config/config.yaml
-Copy-Item .env.example .env
-# 编辑 config/config.yaml 和 .env
-docker compose up --build
-```
-
-Compose 会读取 `.env`，挂载 `config/config.yaml`，artifact 和 SQLite 元数据会写入项目根目录的 `artifacts/`。
-
-如果要通过 Docker 暴露端口，`config/config.yaml` 里的 `server.host` 应为 `0.0.0.0`。本机仍然可以用 `http://127.0.0.1:8787` 访问。
 
 ## MCP 客户端配置
 
@@ -135,18 +52,45 @@ url = "http://127.0.0.1:8787/mcp"
 deferred_loading = true
 ```
 
-## 测试
+如果另一个 Docker Compose 服务在同一个 Docker 网络中访问网关，可以使用：
 
-测试使用 `tests/config/test.config.yaml`：
+```toml
+[[mcp.servers]]
+name = "home"
+transport = "sse"
+url = "http://home-mcp:8787/mcp"
+deferred_loading = true
+```
+
+## 本地 Python 开发
+
+```powershell
+python -m pip install -e .
+python -m app.main
+```
+
+默认路径是 Docker Compose；本地 Python 运行主要用于开发。
+
+## Agent
+
+在 `.env` 中设置 `ENABLED_AGENTS`，然后运行根目录便捷脚本：
+
+```powershell
+.\apply_agent.bat
+```
+
+这个脚本会调用 `tools/apply_agent.ps1`，并管理 `config/agent/config.agent.<name>.yaml` 和 `.env.agent.<name>` 文件。
+
+## 测试
 
 ```powershell
 .\tests\run_tests.ps1
 ```
 
-测试脚本会设置 `CONFIG_PATH=tests/config/test.config.yaml` 和测试 token，然后运行 `unittest`。
-
 ## 文档
 
-- 开发文档：[`documents/`](documents/README.md)
-- 部署说明：[`deploy/README.md`](deploy/README.md)
-- 英文 README：[`README.md`](README.md)
+- 文档总入口：[docs/README.md](docs/README.md)
+- 用户详细文档：[docs/user/README.md](docs/user/README.md)
+- 当前开发文档：[docs/developer/README.md](docs/developer/README.md)
+- 原始开发文档：[docs/original/README.md](docs/original/README.md)
+- 英文快速开始：[README.md](README.md)

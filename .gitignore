@@ -16,4 +16,5 @@ tmp*/
 sample/
 config/config.yaml
 config/local.config.yaml
+custom.config.yaml
 config/agent/config.agent.*.yaml
