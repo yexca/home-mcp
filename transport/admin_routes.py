@@ -87,11 +87,12 @@ def handle_admin_post(handler, services: CoreServices, path: str) -> None:
                 agent_result = _write_agent_configs(agents)
                 owned_fields = dict(owned_fields)
                 owned_fields["ENABLED_AGENTS"] = ",".join(agent["name"] for agent in agent_result["agents"])
+                owned_fields.update(agent_result.get("owned_fields", {}))
             else:
                 agent_result = None
             owned_fields = _preserve_existing_secrets(owned_fields)
             result = write_snapshot(owned_fields)
-        except ValueError as exc:
+        except (OSError, ValueError) as exc:
             _json(handler, {"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
         _json(handler, {"ok": True, "webui": result, "agents": agent_result})
@@ -260,10 +261,10 @@ def _agent_status(root_env: dict[str, str]) -> list[dict[str, Any]]:
 def _write_agent_configs(raw_agents: Any) -> dict[str, Any]:
     if not isinstance(raw_agents, list):
         raise ValueError("agents must be a list")
-    config_dir = Path(os.getenv("AGENT_CONFIG_DIR", "config/agent"))
-    env_dir = Path(os.getenv("AGENT_ENV_DIR", "."))
-    config_dir.mkdir(parents=True, exist_ok=True)
-    env_dir.mkdir(parents=True, exist_ok=True)
+    read_config_dir = Path(os.getenv("AGENT_CONFIG_DIR", "config/agent"))
+    read_env_dir = Path(os.getenv("AGENT_ENV_DIR", "."))
+    config_dir, env_dir, owned_fields = _agent_write_dirs(read_config_dir, read_env_dir)
+    root_env = _current_user_env_values()
     normalized: list[dict[str, Any]] = []
     seen: set[str] = set()
     for raw_agent in raw_agents:
@@ -271,6 +272,7 @@ def _write_agent_configs(raw_agents: Any) -> dict[str, Any]:
         if agent["name"] in seen:
             raise ValueError(f"duplicate agent name: {agent['name']}")
         seen.add(agent["name"])
+        _fill_existing_agent_secrets(agent, read_env_dir, root_env)
         normalized.append(agent)
 
     existing = set()
@@ -288,7 +290,51 @@ def _write_agent_configs(raw_agents: Any) -> dict[str, Any]:
         _remove_managed_file(config_dir / f"config.agent.{name}.yaml")
         _remove_managed_file(env_dir / f".env.agent.{name}")
 
-    return {"agents": [{"name": agent["name"]} for agent in normalized]}
+    os.environ["AGENT_CONFIG_DIR"] = str(config_dir)
+    os.environ["AGENT_ENV_DIR"] = str(env_dir)
+    return {
+        "agents": [{"name": agent["name"]} for agent in normalized],
+        "agent_config_dir": str(config_dir),
+        "agent_env_dir": str(env_dir),
+        "owned_fields": owned_fields,
+    }
+
+
+def _agent_write_dirs(read_config_dir: Path, read_env_dir: Path) -> tuple[Path, Path, dict[str, str]]:
+    if _can_write_dir(read_config_dir) and _can_write_dir(read_env_dir):
+        return read_config_dir, read_env_dir, {}
+    webui_root = Path(os.getenv("WEBUI_CONFIG_DIR", "config_webUI"))
+    config_dir = webui_root / "agent-config"
+    env_dir = webui_root / "agent-env"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    env_dir.mkdir(parents=True, exist_ok=True)
+    if not _can_write_dir(config_dir) or not _can_write_dir(env_dir):
+        raise OSError(f"WebUI agent config directory is not writable: {webui_root}")
+    return config_dir, env_dir, {
+        "AGENT_CONFIG_DIR": str(config_dir),
+        "AGENT_ENV_DIR": str(env_dir),
+    }
+
+
+def _can_write_dir(path: Path) -> bool:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".webui-write-test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+    except OSError:
+        return False
+    return True
+
+
+def _fill_existing_agent_secrets(agent: dict[str, Any], env_dir: Path, root_env: dict[str, str]) -> None:
+    agent_env = _read_dotenv_values(env_dir / f".env.agent.{agent['name']}")
+    gateway_token_env = agent["caller"]["token_env"]
+    matrix_token_env = agent["matrix"]["access_token_env"]
+    if not agent["caller"]["gateway_token"]:
+        agent["caller"]["gateway_token"] = agent_env.get(gateway_token_env, root_env.get(gateway_token_env, ""))
+    if not agent["matrix"]["access_token"]:
+        agent["matrix"]["access_token"] = agent_env.get(matrix_token_env, root_env.get(matrix_token_env, ""))
 
 
 def _normalize_agent(raw_agent: Any) -> dict[str, Any]:

@@ -443,6 +443,78 @@ class McpTransportTests(unittest.TestCase):
                     else:
                         os.environ[key] = value
 
+    def test_admin_config_falls_back_to_webui_agent_dirs_when_agent_mount_is_read_only(self) -> None:
+        services, registry, dispatcher = fresh_gateway()
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = {
+                "WEBUI_CONFIG_DIR": os.environ.get("WEBUI_CONFIG_DIR"),
+                "AGENT_CONFIG_DIR": os.environ.get("AGENT_CONFIG_DIR"),
+                "AGENT_ENV_DIR": os.environ.get("AGENT_ENV_DIR"),
+            }
+            root = Path(tmp)
+            read_only_config = root / "read-only-config"
+            read_only_env = root / "read-only-env"
+            read_only_config.write_text("not a directory", encoding="utf-8")
+            read_only_env.write_text("not a directory", encoding="utf-8")
+            os.environ["WEBUI_CONFIG_DIR"] = str(root / "config_webUI")
+            os.environ["AGENT_CONFIG_DIR"] = str(read_only_config)
+            os.environ["AGENT_ENV_DIR"] = str(read_only_env)
+            httpd = GatewayHTTPServer(
+                ("127.0.0.1", 0),
+                GatewayRequestHandler,
+                services=services,
+                registry=registry,
+                dispatcher=dispatcher,
+            )
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            host, port = httpd.server_address
+            try:
+                conn = HTTPConnection(host, port, timeout=5)
+                conn.request(
+                    "POST",
+                    "/admin/api/config",
+                    body=json.dumps(
+                        {
+                            "owned_fields": {"MATRIX_MODULE_ENABLED": "true"},
+                            "agents": [
+                                {
+                                    "name": "agent1",
+                                    "caller": {"shared_artifact_read": False},
+                                    "matrix": {"account": "agent1"},
+                                    "high_risk_tools": ["matrix_send_text"],
+                                }
+                            ],
+                        }
+                    ),
+                    headers={
+                        "Authorization": "Bearer test-host-token",
+                        "Content-Type": "application/json",
+                    },
+                )
+                response = conn.getresponse()
+                self.assertEqual(response.status, 200)
+                payload = json.loads(response.read().decode("utf-8"))
+                self.assertTrue(payload["ok"])
+                owned = payload["webui"]["owned_fields"]
+                self.assertEqual(owned["ENABLED_AGENTS"], "agent1")
+                self.assertIn("config_webUI", owned["AGENT_CONFIG_DIR"])
+                self.assertIn("config_webUI", owned["AGENT_ENV_DIR"])
+                fallback_config = Path(owned["AGENT_CONFIG_DIR"])
+                fallback_env = Path(owned["AGENT_ENV_DIR"])
+                self.assertTrue((fallback_config / "config.agent.agent1.yaml").is_file())
+                self.assertTrue((fallback_env / ".env.agent.agent1").is_file())
+                conn.close()
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=5)
+                for key, value in previous.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
+
 
 def _read_sse_event(response) -> dict[str, str]:
     event = ""

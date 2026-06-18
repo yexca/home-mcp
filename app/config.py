@@ -137,6 +137,7 @@ def load_settings(config_path: str | None = None) -> Settings:
 
 
 def _load_env_defaults() -> EnvDefaults:
+    _apply_webui_agent_dir_env_values(read_current_config().owned_fields)
     initial_keys = set(os.environ)
     dotenv_declared_keys = _read_dotenv_keys(Path(".env"))
     dotenv_keys = _load_dotenv(Path(".env"))
@@ -149,6 +150,13 @@ def _load_env_defaults() -> EnvDefaults:
         enabled_agents_declared=enabled_agents_declared,
         enabled_agents=enabled_agents,
     )
+
+
+def _apply_webui_agent_dir_env_values(owned_fields: dict[str, str]) -> None:
+    for key in ("AGENT_CONFIG_DIR", "AGENT_ENV_DIR"):
+        value = owned_fields.get(key)
+        if value is not None and value.strip():
+            os.environ[key] = value.strip()
 
 
 def _load_config_with_defaults(config_path: str | None = None) -> dict[str, Any]:
