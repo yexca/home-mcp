@@ -373,6 +373,76 @@ class McpTransportTests(unittest.TestCase):
                 if previous_image_model is not None:
                     os.environ["IMAGE_API_MODEL"] = previous_image_model
 
+    def test_admin_config_can_save_matrix_agents(self) -> None:
+        services, registry, dispatcher = fresh_gateway()
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = {
+                "WEBUI_CONFIG_DIR": os.environ.get("WEBUI_CONFIG_DIR"),
+                "AGENT_CONFIG_DIR": os.environ.get("AGENT_CONFIG_DIR"),
+                "AGENT_ENV_DIR": os.environ.get("AGENT_ENV_DIR"),
+            }
+            os.environ["WEBUI_CONFIG_DIR"] = str(Path(tmp) / "config_webUI")
+            os.environ["AGENT_CONFIG_DIR"] = str(Path(tmp) / "config" / "agent")
+            os.environ["AGENT_ENV_DIR"] = str(Path(tmp))
+            httpd = GatewayHTTPServer(
+                ("127.0.0.1", 0),
+                GatewayRequestHandler,
+                services=services,
+                registry=registry,
+                dispatcher=dispatcher,
+            )
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            host, port = httpd.server_address
+            try:
+                conn = HTTPConnection(host, port, timeout=5)
+                conn.request(
+                    "POST",
+                    "/admin/api/config",
+                    body=json.dumps(
+                        {
+                            "owned_fields": {"MATRIX_MODULE_ENABLED": "true"},
+                            "agents": [
+                                {
+                                    "name": "agent_web",
+                                    "caller": {
+                                        "gateway_token": "gateway-token",
+                                        "shared_artifact_read": False,
+                                    },
+                                    "matrix": {
+                                        "account": "agent_web",
+                                        "access_token": "matrix-token",
+                                    },
+                                    "high_risk_tools": ["matrix_send_text"],
+                                }
+                            ],
+                        }
+                    ),
+                    headers={
+                        "Authorization": "Bearer test-host-token",
+                        "Content-Type": "application/json",
+                    },
+                )
+                response = conn.getresponse()
+                self.assertEqual(response.status, 200)
+                payload = json.loads(response.read().decode("utf-8"))
+                self.assertTrue(payload["ok"])
+                self.assertEqual(payload["webui"]["owned_fields"]["ENABLED_AGENTS"], "agent_web")
+                self.assertTrue((Path(tmp) / "config" / "agent" / "config.agent.agent_web.yaml").is_file())
+                env_text = (Path(tmp) / ".env.agent.agent_web").read_text(encoding="utf-8")
+                self.assertIn("GATEWAY_TOKEN_AGENT_WEB=gateway-token", env_text)
+                self.assertIn("AGENT_WEB_MATRIX_ACCESS_TOKEN=matrix-token", env_text)
+                conn.close()
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=5)
+                for key, value in previous.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
+
 
 def _read_sse_event(response) -> dict[str, str]:
     event = ""
