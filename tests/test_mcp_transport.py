@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
+import tempfile
 import unittest
 from http.client import HTTPConnection
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from core.errors import POLICY_DENIED
@@ -13,6 +16,31 @@ from transport.mcp_server import GatewayHTTPServer, GatewayRequestHandler
 
 
 class McpTransportTests(unittest.TestCase):
+    def test_root_redirects_to_webui(self) -> None:
+        services, registry, dispatcher = fresh_gateway()
+        httpd = GatewayHTTPServer(
+            ("127.0.0.1", 0),
+            GatewayRequestHandler,
+            services=services,
+            registry=registry,
+            dispatcher=dispatcher,
+        )
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        host, port = httpd.server_address
+        conn = HTTPConnection(host, port, timeout=5)
+        try:
+            conn.request("GET", "/")
+            response = conn.getresponse()
+            self.assertEqual(response.status, 302)
+            self.assertEqual(response.getheader("Location"), "/webui/")
+            response.read()
+        finally:
+            conn.close()
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=5)
+
     def test_request_body_metadata_caller_cannot_spoof_identity(self) -> None:
         services, registry, dispatcher = fresh_gateway()
         artifact = services.artifacts.create_from_bytes(
@@ -270,6 +298,80 @@ class McpTransportTests(unittest.TestCase):
             httpd.shutdown()
             httpd.server_close()
             thread.join(timeout=5)
+
+    def test_admin_status_and_config_snapshot_require_admin_token(self) -> None:
+        services, registry, dispatcher = fresh_gateway()
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_webui_dir = os.environ.get("WEBUI_CONFIG_DIR")
+            previous_agent_env_dir = os.environ.get("AGENT_ENV_DIR")
+            previous_image_model = os.environ.pop("IMAGE_API_MODEL", None)
+            os.environ["WEBUI_CONFIG_DIR"] = str(Path(tmp) / "config_webUI")
+            agent_env_dir = Path(tmp) / "agent-env"
+            agent_env_dir.mkdir()
+            (agent_env_dir / ".env").write_text("IMAGE_API_MODEL=model-from-mounted-env\n", encoding="utf-8")
+            os.environ["AGENT_ENV_DIR"] = str(agent_env_dir)
+            httpd = GatewayHTTPServer(
+                ("127.0.0.1", 0),
+                GatewayRequestHandler,
+                services=services,
+                registry=registry,
+                dispatcher=dispatcher,
+            )
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            host, port = httpd.server_address
+            try:
+                denied = HTTPConnection(host, port, timeout=5)
+                denied.request("GET", "/admin/api/status")
+                denied_response = denied.getresponse()
+                self.assertEqual(denied_response.status, 401)
+                denied_response.read()
+                denied.close()
+
+                conn = HTTPConnection(host, port, timeout=5)
+                conn.request(
+                    "GET",
+                    "/admin/api/status",
+                    headers={"Authorization": "Bearer test-host-token"},
+                )
+                response = conn.getresponse()
+                self.assertEqual(response.status, 200)
+                payload = json.loads(response.read().decode("utf-8"))
+                self.assertTrue(payload["ok"])
+                self.assertIn("webui", payload)
+                self.assertEqual(payload["local_env"]["IMAGE_API_MODEL"], "model-from-mounted-env")
+                conn.close()
+
+                save = HTTPConnection(host, port, timeout=5)
+                save.request(
+                    "POST",
+                    "/admin/api/config",
+                    body=json.dumps({"owned_fields": {"IMAGE_MODULE_ENABLED": "true"}}),
+                    headers={
+                        "Authorization": "Bearer test-host-token",
+                        "Content-Type": "application/json",
+                    },
+                )
+                save_response = save.getresponse()
+                self.assertEqual(save_response.status, 200)
+                save_payload = json.loads(save_response.read().decode("utf-8"))
+                self.assertTrue(save_payload["ok"])
+                self.assertTrue((Path(tmp) / "config_webUI" / "current.json").is_file())
+                save.close()
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=5)
+                if previous_webui_dir is None:
+                    os.environ.pop("WEBUI_CONFIG_DIR", None)
+                else:
+                    os.environ["WEBUI_CONFIG_DIR"] = previous_webui_dir
+                if previous_agent_env_dir is None:
+                    os.environ.pop("AGENT_ENV_DIR", None)
+                else:
+                    os.environ["AGENT_ENV_DIR"] = previous_agent_env_dir
+                if previous_image_model is not None:
+                    os.environ["IMAGE_API_MODEL"] = previous_image_model
 
 
 def _read_sse_event(response) -> dict[str, str]:

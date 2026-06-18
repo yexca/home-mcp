@@ -10,6 +10,8 @@ from urllib.parse import urlparse
 
 import yaml
 
+from app.webui_config import read_current_config
+
 _ENV_PATTERN = re.compile(r"\$\{([A-Z0-9_]+)\}")
 
 def _number_env_value(value: str) -> int | float:
@@ -122,11 +124,14 @@ class Settings:
 
 
 def load_settings(config_path: str | None = None) -> Settings:
+    webui_config = read_current_config()
+    _apply_webui_env_values(webui_config.owned_fields)
     env_defaults = _load_env_defaults()
     data = _load_config_with_defaults(config_path)
     _apply_agent_config_fragments(data, env_defaults)
     data = _substitute_env(data, _load_env_template_values())
     _apply_env_overrides(data, env_defaults)
+    _apply_webui_overrides(data, webui_config.owned_fields)
     _validate(data)
     return Settings(data)
 
@@ -354,6 +359,11 @@ def _load_env_template_values() -> dict[str, str]:
     return template_values
 
 
+def _apply_webui_env_values(owned_fields: dict[str, str]) -> None:
+    for key, value in owned_fields.items():
+        os.environ[key] = value
+
+
 def _read_dotenv_keys(path: Path) -> set[str]:
     keys: set[str] = set()
     if not path.is_file():
@@ -436,6 +446,25 @@ def _apply_env_overrides(data: dict[str, Any], env_defaults: EnvDefaults) -> Non
         data.setdefault("artifacts", {})["public_base_url"] = artifact_public_base_url
     _apply_module_enabled_env_overrides(data, env_defaults)
     _apply_value_env_overrides(data, env_defaults)
+
+
+def _apply_webui_overrides(data: dict[str, Any], owned_fields: dict[str, str]) -> None:
+    if not owned_fields:
+        return
+    artifact_public_base_url = owned_fields.get("ARTIFACT_PUBLIC_BASE_URL", "").strip()
+    if artifact_public_base_url:
+        data.setdefault("artifacts", {})["public_base_url"] = artifact_public_base_url
+    modules = data.setdefault("modules", {})
+    for module_name, env_name in _MODULE_ENABLED_ENV_VARS.items():
+        raw_value = owned_fields.get(env_name)
+        if raw_value is None or not raw_value.strip():
+            continue
+        modules.setdefault(module_name, {})["enabled"] = _parse_bool_env(env_name, raw_value)
+    for env_name, path, parser in _ENV_VALUE_OVERRIDES:
+        raw_value = owned_fields.get(env_name)
+        if raw_value is None or not raw_value.strip():
+            continue
+        _set_nested(data, path, parser(raw_value))
 
 
 def _apply_module_enabled_env_overrides(data: dict[str, Any], env_defaults: EnvDefaults) -> None:

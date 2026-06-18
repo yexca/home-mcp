@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>home_mcp_gateway</title>
+    <link rel="stylesheet" href="/webui/app.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" data-i18n="eyebrow">Local MCP Gateway</p>
+          <h1>home_mcp_gateway</h1>
+        </div>
+        <div class="toolbar">
+          <button id="themeToggle" type="button" class="icon-button" title="Toggle theme">◐</button>
+          <select id="languageSelect" class="select" aria-label="Language">
+            <option value="en">English</option>
+            <option value="zh-CN">简体中文</option>
+          </select>
+        </div>
+      </header>
+
+      <section class="auth-panel" id="authPanel">
+        <label>
+          <span data-i18n="adminToken">.env GATEWAY_TOKEN_HOST value</span>
+          <input id="adminToken" type="password" autocomplete="current-password" data-i18n-placeholder="adminTokenPlaceholder" />
+        </label>
+        <button id="loadStatus" type="button" data-i18n="connect">Connect</button>
+      </section>
+
+      <section id="message" class="message" hidden></section>
+
+      <section class="grid summary-grid">
+        <article class="panel">
+          <div class="panel-heading">
+            <h2 data-i18n="runtime">Runtime</h2>
+            <span id="serverBadge" class="badge muted">offline</span>
+          </div>
+          <dl class="facts">
+            <div><dt data-i18n="server">Server</dt><dd id="serverName">-</dd></div>
+            <div><dt data-i18n="address">Address</dt><dd id="serverAddress">-</dd></div>
+            <div><dt data-i18n="container">Container</dt><dd id="containerStatus">-</dd></div>
+            <div><dt data-i18n="docker">Docker</dt><dd id="dockerStatus">-</dd></div>
+          </dl>
+        </article>
+
+        <article class="panel">
+          <div class="panel-heading">
+            <h2 data-i18n="ownership">Config Ownership</h2>
+            <span id="webuiBadge" class="badge muted">local</span>
+          </div>
+          <dl class="facts">
+            <div><dt data-i18n="snapshot">Snapshot</dt><dd id="snapshotPath">-</dd></div>
+            <div><dt data-i18n="ownedCount">Owned fields</dt><dd id="ownedCount">0</dd></div>
+          </dl>
+        </article>
+      </section>
+
+      <form id="configForm" class="layout">
+        <section class="panel">
+          <div class="panel-heading">
+            <h2 data-i18n="modules">Modules</h2>
+          </div>
+          <div class="module-grid" id="moduleGrid"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2 data-i18n="serverAndStorage">Server & Storage</h2>
+          </div>
+          <div class="field-grid">
+            <label><span>SERVER_HOST</span><input name="SERVER_HOST" /></label>
+            <label><span>SERVER_PORT</span><input name="SERVER_PORT" inputmode="numeric" /></label>
+            <label><span>ARTIFACT_PUBLIC_BASE_URL</span><input name="ARTIFACT_PUBLIC_BASE_URL" /></label>
+            <label><span>ARTIFACT_SIGNED_URL_TTL_SECONDS</span><input name="ARTIFACT_SIGNED_URL_TTL_SECONDS" inputmode="numeric" /></label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2 data-i18n="images">Images</h2>
+          </div>
+          <div class="field-grid">
+            <label><span>IMAGE_API_BASE_URL</span><input name="IMAGE_API_BASE_URL" /></label>
+            <label><span>IMAGE_API_MODEL</span><input name="IMAGE_API_MODEL" /></label>
+            <label><span>IMAGE_API_KEY</span><input name="IMAGE_API_KEY" type="password" /></label>
+            <label><span>IMAGE_TOTAL_TIMEOUT_SECONDS</span><input name="IMAGE_TOTAL_TIMEOUT_SECONDS" inputmode="numeric" /></label>
+            <label><span>LOCAL_IMAGE_COMFYUI_BASE_URL</span><input name="LOCAL_IMAGE_COMFYUI_BASE_URL" /></label>
+            <label><span>LOCAL_IMAGE_COMFYUI_WORKFLOW_PATH</span><input name="LOCAL_IMAGE_COMFYUI_WORKFLOW_PATH" /></label>
+            <label><span>LOCAL_IMAGE_COMFYUI_CHECKPOINT</span><input name="LOCAL_IMAGE_COMFYUI_CHECKPOINT" /></label>
+            <label><span>LOCAL_IMAGE_COMFYUI_MAX_WAIT_SECONDS</span><input name="LOCAL_IMAGE_COMFYUI_MAX_WAIT_SECONDS" inputmode="numeric" /></label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2 data-i18n="messaging">Messaging</h2>
+          </div>
+          <div class="field-grid">
+            <label><span>ENABLED_AGENTS</span><input name="ENABLED_AGENTS" placeholder="agent1,agent2" /></label>
+            <label><span>MATRIX_HOMESERVER</span><input name="MATRIX_HOMESERVER" /></label>
+            <label><span>MATRIX_ACCESS_TOKEN</span><input name="MATRIX_ACCESS_TOKEN" type="password" /></label>
+            <label><span>MATRIX_TIMEOUT_SECONDS</span><input name="MATRIX_TIMEOUT_SECONDS" inputmode="numeric" /></label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2 data-i18n="ttsPrinter">TTS & Printer</h2>
+          </div>
+          <div class="field-grid">
+            <label><span>TTS_LOCAL_HTTP_URL</span><input name="TTS_LOCAL_HTTP_URL" /></label>
+            <label><span>TTS_API_KEY</span><input name="TTS_API_KEY" type="password" /></label>
+            <label><span>TTS_PROVIDER_TIMEOUT_SECONDS</span><input name="TTS_PROVIDER_TIMEOUT_SECONDS" inputmode="numeric" /></label>
+            <label><span>PRINTER_BRIDGE_URL</span><input name="PRINTER_BRIDGE_URL" /></label>
+            <label><span>PRINTER_BRIDGE_API_KEY</span><input name="PRINTER_BRIDGE_API_KEY" type="password" /></label>
+            <label><span>PRINTER_MAX_COPIES</span><input name="PRINTER_MAX_COPIES" inputmode="numeric" /></label>
+          </div>
+        </section>
+
+        <section class="action-bar">
+          <button id="saveConfig" type="submit" data-i18n="save">Save WebUI Config</button>
+          <button id="resetDraft" type="button" class="secondary" data-i18n="reloadLocal">Reload Local Values</button>
+        </section>
+      </form>
+    </main>
+    <script src="/webui/app.js"></script>
+  </body>
+</html>

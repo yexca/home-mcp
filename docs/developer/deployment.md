@@ -11,6 +11,16 @@ Copy-Item .env.example .env
 docker compose up --build
 ```
 
+Open the local WebUI in a browser:
+
+```text
+http://127.0.0.1:8787
+```
+
+The root URL redirects to `/webui/`. The WebUI stores its owned-field snapshots
+under `config_webUI/`; Docker Compose mounts that directory read-write into the
+container. It does not write the host `.env` directly.
+
 The host can connect ZeroClaw to:
 
 ```toml
@@ -59,8 +69,13 @@ Use the same base for the ZeroClaw MCP URL, replacing `/artifacts` with `/mcp`.
 ## Configuration
 
 - Compose mounts generated agent config and ComfyUI workflow config into the container.
+- Compose mounts `config_webUI/` read-write for WebUI-owned configuration snapshots.
 - Compose reads local values from the project-root `.env`, created from
   `.env.example`.
+- WebUI-owned values override matching local `.env` values at gateway startup.
+  Values not owned by the WebUI still come from `.env`.
+- Run `tools/apply_webUI_config.ps1` on the host to apply WebUI-owned values to
+  `.env` and archive the active WebUI config under `config_webUI/backup/`.
 - `ARTIFACT_SIGNING_SECRET` signs short-lived artifact download URLs.
 - Artifacts and SQLite metadata live under the project-root `./artifacts`
   directory, matching the default environment values.

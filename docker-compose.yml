@@ -13,6 +13,7 @@ services:
       - "8787:8787"
     volumes:
       - ./config/agent:/app/config/agent:ro
+      - ./config_webUI:/app/config_webUI
       - ./:/app/agent-env:ro
       - ./config/comfyui:/app/config/comfyui:ro
       - ./artifacts:/app/artifacts

@@ -9,7 +9,7 @@ keeps external provider details behind module adapters.
 | Layer | Package | Responsibility |
 | --- | --- | --- |
 | Application | `app/` | Load settings, open SQLite, build core services, register tools, start HTTP server. |
-| Transport | `transport/` | Serve `/healthz`, `/readyz`, `/mcp`, `/mcp/messages`, and `/artifacts/{id}`. |
+| Transport | `transport/` | Serve `/`, `/webui/`, `/admin/api/*`, `/healthz`, `/readyz`, `/mcp`, `/mcp/messages`, and `/artifacts/{id}`. |
 | Tool system | `tools/` | Register tool definitions, validate input schemas, dispatch handlers, normalize success/failure results. |
 | Core services | `core/` | Artifacts, jobs, audit events, caller policy, rate limits, database migrations, stable errors. |
 | Modules | `modules/` | Domain logic and tool registration for optional capabilities. |
@@ -61,6 +61,11 @@ returned to MCP clients.
 
 The gateway supports three call shapes:
 
+- WebUI and admin:
+  - `GET /` redirects to `/webui/`.
+  - `GET /webui/` serves the static local configuration UI.
+  - `GET /admin/api/status` returns admin-only runtime, environment, and WebUI ownership status.
+  - `POST /admin/api/config` saves WebUI-owned configuration fields under `config_webUI/`.
 - HTTP health/readiness:
   - `GET /healthz`
   - `GET /readyz`
@@ -77,6 +82,11 @@ Artifact files are served by `GET /artifacts/{artifact_id}`. Requests with a
 Bearer token use the same ownership/grant checks as `artifact_get`; requests
 without Bearer must include a valid short-lived `expires` and `signature` query
 pair from artifact metadata.
+
+Admin API calls require an admin Bearer token. The WebUI writes only
+`config_webUI/` snapshots; it does not write host `.env` files from inside the
+container. At startup, WebUI-owned fields override matching local `.env` values,
+while non-owned fields continue to come from local configuration.
 
 ## Storage Model
 

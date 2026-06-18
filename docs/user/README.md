@@ -44,6 +44,14 @@ Invoke-RestMethod http://127.0.0.1:8787/healthz
 Invoke-RestMethod http://127.0.0.1:8787/readyz
 ```
 
+For browser-based configuration, open:
+
+```text
+http://127.0.0.1:8787
+```
+
+The root URL redirects to the WebUI.
+
 ## Docker Compose
 
 ```powershell
@@ -53,6 +61,31 @@ docker compose up --build
 ```
 
 Compose reads `.env`, builds from the root `Dockerfile`, mounts generated agent config, mounts ComfyUI workflow config, and stores artifacts under `./artifacts`.
+
+## WebUI Configuration
+
+When the gateway is running, open:
+
+```text
+http://127.0.0.1:8787
+```
+
+The root URL redirects to `/webui/`. When the WebUI asks for access, paste the
+value after `GATEWAY_TOKEN_HOST=` from your local `.env` file. Do not include
+the `Bearer` prefix. The WebUI saves only the fields it owns under
+`config_webUI/`, which is mounted read-write in Docker Compose. Local `.env`
+values still apply for fields that the WebUI has not owned.
+
+To make WebUI-owned values permanent in `.env` and return to local-file
+management, run this from the host:
+
+```powershell
+.\tools\apply_webUI_config.ps1
+```
+
+The script backs up `.env`, writes the WebUI-owned values into `.env`, archives
+the active WebUI config under `config_webUI/backup/`, and runs
+`tools/apply_agent.ps1` when `ENABLED_AGENTS` was owned by the WebUI.
 
 ## MCP Client URL
 

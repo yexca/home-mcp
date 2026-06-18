@@ -13,6 +13,7 @@ COPY core ./core
 COPY modules ./modules
 COPY tools ./tools
 COPY transport ./transport
+COPY webui ./webui
 COPY pyproject.toml README.md .env.example ./
 
 RUN mkdir -p /app/artifacts

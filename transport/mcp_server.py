@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 from tools.dispatcher import ToolDispatcher
 from tools.registry import ToolRegistry
+from transport.admin_routes import handle_admin_get, handle_admin_post, serve_webui
 from transport.artifact_routes import serve_artifact
 from transport.request_context import CoreServices
 
@@ -44,6 +45,18 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/":
+            self.send_response(HTTPStatus.FOUND)
+            self.send_header("Location", "/webui/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if parsed.path == "/webui" or parsed.path.startswith("/webui/"):
+            serve_webui(self, parsed.path)
+            return
+        if parsed.path.startswith("/admin/api/"):
+            handle_admin_get(self, self.server.services, parsed.path)
+            return
         if parsed.path == "/healthz":
             self._json({"ok": True, "server": self.server.services.config.server["name"]})
             return
@@ -61,6 +74,9 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/admin/api/"):
+            handle_admin_post(self, self.server.services, parsed.path)
+            return
         mcp_path = self.server.services.config.server.get("mcp_path", "/mcp")
         if parsed.path == f"{mcp_path.rstrip('/')}/messages":
             self._handle_sse_message(parsed)

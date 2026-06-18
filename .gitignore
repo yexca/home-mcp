@@ -8,6 +8,7 @@ mcp_python_skills/**/__pycache__/
 .env
 .env.agent.*
 artifacts/
+config_webUI/
 tmp*/
 *.sqlite3
 *.sqlite3-shm

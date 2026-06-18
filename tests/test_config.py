@@ -262,6 +262,60 @@ class ConfigTests(unittest.TestCase):
             if old_config_path is not None:
                 os.environ["CONFIG_PATH"] = old_config_path
 
+    def test_webui_owned_fields_override_local_env(self) -> None:
+        old_cwd = Path.cwd()
+        old_config_path = os.environ.pop("CONFIG_PATH", None)
+        previous = {
+            "WEBUI_CONFIG_DIR": os.environ.pop("WEBUI_CONFIG_DIR", None),
+            "TTS_MODULE_ENABLED": os.environ.pop("TTS_MODULE_ENABLED", None),
+        }
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "config").mkdir()
+                (root / ".env").write_text("TTS_MODULE_ENABLED=false\n", encoding="utf-8")
+                (root / "config" / "config.main.yaml").write_text(
+                    "\n".join(
+                        [
+                            "server: {host: 127.0.0.1, port: 8787}",
+                            "artifacts: {root: ./artifacts}",
+                            "database: {path: ./artifacts/metadata.sqlite3}",
+                            "limits: {}",
+                            "modules:",
+                            "  tts:",
+                            "    enabled: false",
+                            "    provider: mock",
+                            "    default_voice: default",
+                            "    voices: [default]",
+                            "    default_language: en-US",
+                            "    languages: [en-US]",
+                            "    default_format: wav",
+                            "    allowed_formats: [wav]",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                (root / "config_webUI" / "snapshots").mkdir(parents=True)
+                (root / "config_webUI" / "current.json").write_text(
+                    '{"active_snapshot":"snapshots/webui.json"}',
+                    encoding="utf-8",
+                )
+                (root / "config_webUI" / "snapshots" / "webui.json").write_text(
+                    '{"owned_fields":{"TTS_MODULE_ENABLED":"true"}}',
+                    encoding="utf-8",
+                )
+                os.chdir(root)
+                try:
+                    settings = load_settings()
+                    self.assertTrue(settings.modules["tts"]["enabled"])
+                finally:
+                    os.chdir(old_cwd)
+        finally:
+            os.chdir(old_cwd)
+            _restore_env(previous)
+            if old_config_path is not None:
+                os.environ["CONFIG_PATH"] = old_config_path
+
     def test_enabled_agents_merge_agent_env_and_config_fragments(self) -> None:
         old_cwd = Path.cwd()
         old_config_path = os.environ.pop("CONFIG_PATH", None)

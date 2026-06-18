@@ -9,3 +9,4 @@ This directory contains the project documentation for `home_mcp_gateway`.
 - [Original Development Notes](original/README.md): preserved early requirements, design, implementation planning, and verification notes.
 
 For the shortest path to a running gateway, start with the root [README](../README.md).
+After the service starts, open `http://127.0.0.1:8787` in a browser to enter the WebUI.
