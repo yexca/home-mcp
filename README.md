@@ -61,13 +61,7 @@ The default path is Docker Compose. Use local Python runs for development only.
 
 ## Agents
 
-Set `agents.enabled` in `config/config.yaml`, then run the root helper:
-
-```powershell
-.\apply_agent.bat
-```
-
-The helper calls `tools/apply_agent.ps1` and manages `config/agent/config.agent.<name>.yaml` files.
+Manage agents in the WebUI or edit `config/config.yaml` and `config/agent/config.agent.<name>.yaml` directly.
 
 ## Tests
 

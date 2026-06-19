@@ -288,8 +288,8 @@ modules:
     homeserver: ""
     # Legacy/default sender token. Used when no caller-specific account matches.
     access_token: ""
-    # Recommended for multiple Matrix senders. Set agents.enabled in config/config.yaml and run:
-    # apply_agent.bat
+    # Recommended for multiple Matrix senders. Manage agents through the WebUI
+    # or edit config/config.yaml and config/agent/*.yaml directly.
     caller_accounts: {}
     accounts: {}
     # Example:

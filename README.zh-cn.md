@@ -65,13 +65,7 @@ python -m app.main
 
 ## Agent
 
-在 `config/config.yaml` 中设置 `agents.enabled`，然后运行根目录便捷脚本：
-
-```powershell
-.\apply_agent.bat
-```
-
-这个脚本会调用 `tools/apply_agent.ps1`，并管理 `config/agent/config.agent.<name>.yaml` 文件。agent 的 gateway token 和 Matrix token 都写在对应的 YAML 中。
+通过 WebUI 管理 agent，或直接编辑 `config/config.yaml` 和 `config/agent/config.agent.<name>.yaml`。agent 的 gateway token 和 Matrix token 都写在对应的 YAML 中。
 
 ## 测试
 

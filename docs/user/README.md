@@ -76,7 +76,9 @@ deferred_loading = true
 
 ## Agent Setup
 
-1. Edit `config/config.yaml`:
+Use the WebUI Matrix page to add, remove, and edit agents. The WebUI writes `config/config.yaml` and `config/agent/config.agent.<name>.yaml` directly.
+
+Manual setup is also possible. Edit `config/config.yaml`:
 
 ```yaml
 agents:
@@ -89,15 +91,7 @@ modules:
     enabled: true
 ```
 
-2. Run:
-
-```powershell
-.\apply_agent.bat
-```
-
-3. Edit each generated `config/agent/config.agent.<name>.yaml` and fill `matrix.access_token` if that agent sends Matrix messages.
-
-Removing an agent from `agents.enabled` and rerunning the helper removes only files that contain the script-managed marker.
+Then create or edit each `config/agent/config.agent.<name>.yaml` and fill `caller.token` plus `matrix.access_token` if that agent sends Matrix messages.
 
 ## Advanced YAML Override
 

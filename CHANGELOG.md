@@ -3,8 +3,7 @@
 ## v0.2.1 - Agent configuration fragments
 
 - Switched normal runtime configuration to ignored YAML under `config/config.yaml`.
-- Moved per-agent secrets into `config/agent/config.agent.<name>.yaml` fragments.
-- Added `tools/apply_agent.ps1` to create enabled agent files and clean up disabled managed agent files on Windows.
+- Moved per-agent secrets into `config/agent/config.agent.<name>.yaml` fragments managed by WebUI or direct YAML edits.
 - Docker Compose now mounts the whole `config/` directory read-write.
 - Updated runtime version metadata, Docker Compose image tagging, and image download User-Agent to `0.2.1`.
 
