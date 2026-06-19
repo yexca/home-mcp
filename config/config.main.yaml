@@ -1,49 +1,53 @@
 server:
   name: home_mcp_gateway
   version: 0.2.1
-  host: ${SERVER_HOST}
-  port: ${SERVER_PORT}
+  host: 0.0.0.0
+  port: 8787
   mcp_path: /mcp
   artifact_path: /artifacts
 
 artifacts:
-  root: ${ARTIFACT_ROOT}
-  public_base_url: ${ARTIFACT_PUBLIC_BASE_URL}
-  signed_url_secret_env: ARTIFACT_SIGNING_SECRET
-  signed_url_ttl_seconds: ${ARTIFACT_SIGNED_URL_TTL_SECONDS}
+  root: ./artifacts
+  public_base_url: http://127.0.0.1:8787/artifacts
+  signed_url_secret: change-me-artifact-signing-secret
+  signed_url_ttl_seconds: 300
   retention_days:
     image: 30
     audio: 30
     document: 30
     print: 7
     temp: 1
-  max_artifact_bytes: ${MAX_ARTIFACT_BYTES}
-  max_inline_artifact_bytes: ${MAX_INLINE_ARTIFACT_BYTES}
+  max_artifact_bytes: 52428800
+  max_inline_artifact_bytes: 5242880
 
 database:
-  path: ${DATABASE_PATH}
+  path: ./artifacts/metadata.sqlite3
   wal: true
-  busy_timeout_ms: ${DATABASE_BUSY_TIMEOUT_MS}
+  busy_timeout_ms: 5000
 
 limits:
-  sync_tool_timeout_seconds: ${SYNC_TOOL_TIMEOUT_SECONDS}
-  image_jobs_per_caller_per_day: ${IMAGE_JOBS_PER_CALLER_PER_DAY}
-  tts_jobs_per_caller_per_day: ${TTS_JOBS_PER_CALLER_PER_DAY}
-  print_jobs_per_caller_per_day: ${PRINT_JOBS_PER_CALLER_PER_DAY}
-  max_image_jobs_global: ${MAX_IMAGE_JOBS_GLOBAL}
-  max_image_jobs_per_caller: ${MAX_IMAGE_JOBS_PER_CALLER}
-  max_tts_jobs_global: ${MAX_TTS_JOBS_GLOBAL}
-  matrix_messages_per_room_per_minute: ${MATRIX_MESSAGES_PER_ROOM_PER_MINUTE}
-  max_print_jobs_global: ${MAX_PRINT_JOBS_GLOBAL}
+  sync_tool_timeout_seconds: 120
+  image_jobs_per_caller_per_day: 20
+  tts_jobs_per_caller_per_day: 100
+  print_jobs_per_caller_per_day: 20
+  max_image_jobs_global: 2
+  max_image_jobs_per_caller: 1
+  max_tts_jobs_global: 2
+  matrix_messages_per_room_per_minute: 5
+  max_print_jobs_global: 1
+
+agents:
+  enabled: []
+  config_dir: config/agent
 
 callers:
   host_assistant:
     role: admin
-    token_env: GATEWAY_TOKEN_HOST
+    token: change-me
     shared_artifact_read: true
   role_default:
     role: role_play
-    token_env: GATEWAY_TOKEN_ROLE_DEFAULT
+    token: change-me-role
     shared_artifact_read: false
 
 policy:
@@ -84,7 +88,7 @@ modules:
   localimage:
     enabled: false
     provider: comfyui
-    default_size: ${LOCAL_IMAGE_DEFAULT_SIZE}
+    default_size: 1024x1024
     allowed_sizes:
       - 512x512
       - 640x640
@@ -153,25 +157,25 @@ modules:
       - 1800x3200
       - 3440x1440
       - 1440x3440
-    default_quality: ${LOCAL_IMAGE_DEFAULT_QUALITY}
+    default_quality: standard
     allowed_qualities:
       - draft
       - standard
       - high
-    default_style: ${LOCAL_IMAGE_DEFAULT_STYLE}
+    default_style: default
     allowed_styles:
       - default
       - anime
       - realistic
       - illustration
-    default_output_format: ${LOCAL_IMAGE_DEFAULT_OUTPUT_FORMAT}
+    default_output_format: png
     allowed_output_formats:
       - png
       - jpeg
       - webp
     max_prompt_chars: 4000
-    total_timeout_seconds: ${LOCAL_IMAGE_TOTAL_TIMEOUT_SECONDS}
-    stale_job_grace_seconds: ${LOCAL_IMAGE_STALE_JOB_GRACE_SECONDS}
+    total_timeout_seconds: 900
+    stale_job_grace_seconds: 30
     quality_presets:
       draft:
         steps: 12
@@ -186,17 +190,17 @@ modules:
         cfg: 8.0
         sampler: dpmpp_2m
     comfyui:
-      base_url: ${LOCAL_IMAGE_COMFYUI_BASE_URL}
+      base_url: http://127.0.0.1:8188
       allowed_hosts:
-        - ${LOCAL_IMAGE_COMFYUI_ALLOWED_HOST}
-      workflow_path: ${LOCAL_IMAGE_COMFYUI_WORKFLOW_PATH}
-      checkpoint: ${LOCAL_IMAGE_COMFYUI_CHECKPOINT}
-      unet_name: ${LOCAL_IMAGE_COMFYUI_UNET_NAME}
-      clip_name: ${LOCAL_IMAGE_COMFYUI_CLIP_NAME}
-      vae_name: ${LOCAL_IMAGE_COMFYUI_VAE_NAME}
-      timeout_seconds: ${LOCAL_IMAGE_COMFYUI_TIMEOUT_SECONDS}
-      poll_interval_seconds: ${LOCAL_IMAGE_COMFYUI_POLL_INTERVAL_SECONDS}
-      max_wait_seconds: ${LOCAL_IMAGE_COMFYUI_MAX_WAIT_SECONDS}
+        - 127.0.0.1
+      workflow_path: ./config/comfyui/sdxl_text_to_image.example.json
+      checkpoint: your-checkpoint.safetensors
+      unet_name: ""
+      clip_name: ""
+      vae_name: ""
+      timeout_seconds: 30
+      poll_interval_seconds: 1
+      max_wait_seconds: 900
       node_mappings:
         positive_prompt: "6"
         negative_prompt: "7"
@@ -230,22 +234,22 @@ modules:
       - jpeg
       - webp
     max_prompt_chars: 4000
-    total_timeout_seconds: ${IMAGE_TOTAL_TIMEOUT_SECONDS}
-    stale_job_grace_seconds: ${IMAGE_STALE_JOB_GRACE_SECONDS}
-    max_download_bytes: ${IMAGE_MAX_DOWNLOAD_BYTES}
-    max_edit_input_images: ${IMAGE_MAX_EDIT_INPUT_IMAGES}
-    max_edit_input_image_bytes: ${IMAGE_MAX_EDIT_INPUT_IMAGE_BYTES}
-    max_edit_total_image_bytes: ${IMAGE_MAX_EDIT_TOTAL_IMAGE_BYTES}
+    total_timeout_seconds: 2000
+    stale_job_grace_seconds: 30
+    max_download_bytes: 10485760
+    max_edit_input_images: 4
+    max_edit_input_image_bytes: 10485760
+    max_edit_total_image_bytes: 20971520
     allowed_edit_input_mime_types:
       - image/png
       - image/jpeg
       - image/webp
     allow_http_image_urls: false
     openai_compatible:
-      base_url: ${IMAGE_API_BASE_URL}
-      model: ${IMAGE_API_MODEL}
-      api_key: ${IMAGE_API_KEY}
-      timeout_seconds: ${IMAGE_PROVIDER_TIMEOUT_SECONDS}
+      base_url: ""
+      model: your-image-model
+      api_key: ""
+      timeout_seconds: 1000
       # Hosts that may appear in provider response image URLs. Keep this
       # explicit and include CDN/image hosts, not only the provider API host.
       allowed_image_url_hosts:
@@ -273,18 +277,18 @@ modules:
     default_speed: 1.0
     min_speed: 0.5
     max_speed: 2.0
-    total_timeout_seconds: ${TTS_TOTAL_TIMEOUT_SECONDS}
-    stale_job_grace_seconds: ${TTS_STALE_JOB_GRACE_SECONDS}
+    total_timeout_seconds: 120
+    stale_job_grace_seconds: 30
     local_http:
-      url: ${TTS_LOCAL_HTTP_URL}
-      api_key: ${TTS_API_KEY}
-      timeout_seconds: ${TTS_PROVIDER_TIMEOUT_SECONDS}
+      url: ""
+      api_key: ""
+      timeout_seconds: 30
   matrix:
     enabled: false
-    homeserver: ${MATRIX_HOMESERVER}
+    homeserver: ""
     # Legacy/default sender token. Used when no caller-specific account matches.
-    access_token: ${MATRIX_ACCESS_TOKEN}
-    # Recommended for multiple Matrix senders. Set ENABLED_AGENTS in .env and run:
+    access_token: ""
+    # Recommended for multiple Matrix senders. Set agents.enabled in config/config.yaml and run:
     # apply_agent.bat
     caller_accounts: {}
     accounts: {}
@@ -295,12 +299,12 @@ modules:
     #   agent2: agent2
     # accounts:
     #   agent1:
-    #     homeserver: ${MATRIX_HOMESERVER}
-    #     access_token: ${AGENT1_MATRIX_ACCESS_TOKEN}
+    #     homeserver: http://127.0.0.1:8008
+    #     access_token: your-agent1-matrix-token
     #   agent2:
-    #     access_token: ${AGENT2_MATRIX_ACCESS_TOKEN}
-    timeout_seconds: ${MATRIX_TIMEOUT_SECONDS}
-    max_text_chars: ${MATRIX_MAX_TEXT_CHARS}
+    #     access_token: your-agent2-matrix-token
+    timeout_seconds: 30
+    max_text_chars: 4000
     allowed_image_mime_types:
       - image/png
       - image/jpeg
@@ -313,8 +317,8 @@ modules:
       - application/pdf
       - image/png
       - image/jpeg
-    max_file_bytes: ${PRINTER_MAX_FILE_BYTES}
-    max_copies: ${PRINTER_MAX_COPIES}
+    max_file_bytes: 10485760
+    max_copies: 2
     default_duplex: none
     duplex_modes:
       - none
@@ -326,6 +330,6 @@ modules:
       - color
       - monochrome
     bridge_http:
-      url: ${PRINTER_BRIDGE_URL}
-      api_key: ${PRINTER_BRIDGE_API_KEY}
-      timeout_seconds: ${PRINTER_BRIDGE_TIMEOUT_SECONDS}
+      url: ""
+      api_key: ""
+      timeout_seconds: 30

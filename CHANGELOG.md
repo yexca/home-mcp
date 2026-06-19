@@ -2,9 +2,10 @@
 
 ## v0.2.1 - Agent configuration fragments
 
-- Added `ENABLED_AGENTS` support with per-agent `.env.agent.<name>` secrets and `config/agent/config.agent.<name>.yaml` fragments.
+- Switched normal runtime configuration to ignored YAML under `config/config.yaml`.
+- Moved per-agent secrets into `config/agent/config.agent.<name>.yaml` fragments.
 - Added `tools/apply_agent.ps1` to create enabled agent files and clean up disabled managed agent files on Windows.
-- Kept root `.env` module switches as the final runtime override.
+- Docker Compose now mounts the whole `config/` directory read-write.
 - Updated runtime version metadata, Docker Compose image tagging, and image download User-Agent to `0.2.1`.
 
 ## v0.2.0 - Matrix agent configuration

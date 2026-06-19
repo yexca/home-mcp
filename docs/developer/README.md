@@ -5,7 +5,7 @@ This directory is the current developer-facing documentation for `home_mcp_gatew
 ## Index
 
 - [Architecture](architecture.md): runtime layers, request flow, storage, and protocols.
-- [Configuration](configuration.md): config load rules, environment variables, agent fragments, and policies.
+- [Configuration](configuration.md): YAML load rules, agent fragments, and policies.
 - [Deployment](deployment.md): Docker Compose, health checks, and artifact URL behavior.
 - [Tool Contracts](tool-contracts.md): built-in and module tool schemas, responses, and errors.
 - [Module Development](module-development.md): how to add or modify a module without changing transport code.
@@ -21,7 +21,7 @@ This directory is the current developer-facing documentation for `home_mcp_gatew
 - `config/config.main.yaml`: application baseline config.
 - `config/comfyui/`: workflow JSON examples.
 - `config/agent/`: generated per-agent config fragments.
-- `.env.example`: user-facing environment template.
+- `config/config.yaml`: ignored local runtime config.
 - `tests/`: test suite, test configs, and test runner.
 
 ## Current Capability Modules
@@ -39,7 +39,6 @@ The gateway also always registers `health_check`, `artifact_get`, `artifact_get_
 ## Developer Quick Start
 
 ```powershell
-Copy-Item .env.example .env
 python -m pip install -e .
 python -m app.main
 ```

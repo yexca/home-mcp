@@ -114,10 +114,13 @@ def artifact_download_signature_valid(settings: Settings, artifact_id: str, expi
 
 
 def _artifact_signing_secret(settings: Settings) -> str:
+    secret = str(settings.artifacts.get("signed_url_secret", "")).strip()
+    if secret:
+        return secret
     env_name = str(settings.artifacts.get("signed_url_secret_env", "ARTIFACT_SIGNING_SECRET")).strip()
     secret = os.getenv(env_name, "") if env_name else ""
     if not secret:
-        secret = os.getenv("GATEWAY_TOKEN_HOST", "")
+        secret = str(settings.callers.get("host_assistant", {}).get("token", "")).strip() or os.getenv("GATEWAY_TOKEN_HOST", "")
     if not secret:
         raise GatewayError(INTERNAL_ERROR, "artifact signing secret is not configured", retryable=False)
     return secret

@@ -2,7 +2,7 @@
 
 `home_mcp_gateway` is a local HTTP/SSE MCP gateway for ZeroClaw and other MCP clients. It centralizes tool calls, policy checks, artifact storage, jobs, and audit records behind one local MCP endpoint.
 
-Normal users only edit `.env`. The committed YAML at `config/config.main.yaml` is the application baseline; keep it as project-owned config unless you are developing the gateway itself.
+Normal users edit YAML under `config/`. The committed `config/config.main.yaml` is the application baseline, and the ignored `config/config.yaml` is your local runtime config.
 
 ## Quick Start
 
@@ -11,19 +11,7 @@ Requirements:
 - Docker with Docker Compose
 - PowerShell on Windows for the helper scripts
 
-Create your local environment file:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-Edit `.env` and set at least these values:
-
-```dotenv
-GATEWAY_TOKEN_HOST=change-this
-GATEWAY_TOKEN_ROLE_DEFAULT=change-this-role
-ARTIFACT_SIGNING_SECRET=change-this-secret
-```
+Edit `config/config.yaml` and set at least `callers.host_assistant.token`, `callers.role_default.token`, and `artifacts.signed_url_secret`.
 
 Build and run with Docker Compose:
 
@@ -73,13 +61,13 @@ The default path is Docker Compose. Use local Python runs for development only.
 
 ## Agents
 
-Set `ENABLED_AGENTS` in `.env`, then run the root helper:
+Set `agents.enabled` in `config/config.yaml`, then run the root helper:
 
 ```powershell
 .\apply_agent.bat
 ```
 
-The helper calls `tools/apply_agent.ps1` and manages `config/agent/config.agent.<name>.yaml` plus `.env.agent.<name>` files.
+The helper calls `tools/apply_agent.ps1` and manages `config/agent/config.agent.<name>.yaml` files.
 
 ## Tests
 

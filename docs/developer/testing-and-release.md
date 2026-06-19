@@ -10,9 +10,6 @@ The script sets:
 
 ```powershell
 $env:CONFIG_PATH = "tests/config/test.config.yaml"
-$env:GATEWAY_TOKEN_HOST = "test-host-token"
-$env:GATEWAY_TOKEN_ROLE_DEFAULT = "test-role-token"
-$env:ARTIFACT_SIGNING_SECRET = "test-artifact-signing-secret"
 python -m unittest discover -s tests
 ```
 
@@ -37,7 +34,6 @@ Start the server:
 
 ```powershell
 $env:CONFIG_PATH = "tests/config/test.config.yaml"
-$env:GATEWAY_TOKEN_HOST = "test-host-token"
 python -m app.main
 ```
 
@@ -73,7 +69,7 @@ Invoke-RestMethod `
 Image:
 
 - Enable `modules.image`.
-- Set `IMAGE_API_BASE_URL`, `IMAGE_API_MODEL`, and `IMAGE_API_KEY`.
+- Set `modules.image.openai_compatible.base_url`, `model`, and `api_key`.
 - Confirm `readyz` shows image enabled.
 - Call `tools/list` and confirm `image_generate` / `image_edit` expose
   configured `size`, `quality`, and `output_format` values as schema enums.
@@ -101,7 +97,7 @@ TTS:
 Matrix:
 
 - Enable `modules.matrix`.
-- Set `MATRIX_HOMESERVER` and `MATRIX_ACCESS_TOKEN`.
+- Set `modules.matrix.homeserver` and `access_token`, or configure an agent account.
 - Configure `policy.allowed_matrix_rooms`.
 - Add the caller to `policy.high_risk_allowed_callers`.
 - Send a short text message to an allowlisted test room.
@@ -109,7 +105,7 @@ Matrix:
 Printer:
 
 - Enable `modules.printer`.
-- Set `PRINTER_BRIDGE_URL`.
+- Set `modules.printer.bridge_http.url`.
 - Configure `allowed_printers` and `policy.allowed_printers`.
 - Add the caller to `policy.high_risk_allowed_callers`.
 - Verify `printer_list`, then submit a small printable artifact to a test printer.
@@ -119,8 +115,7 @@ Printer:
 Before releasing or deploying:
 
 - Run `.\tests\run_tests.ps1`.
-- Create a local `.env` from `.env.example` and set non-empty local compose
-  tokens.
+- Create a local `config/config.yaml` and set non-empty local compose tokens.
 - Build the container with `docker compose build`.
 - Start it with `docker compose up`.
 - Check `GET /healthz` and `GET /readyz`.
@@ -133,7 +128,7 @@ Before releasing or deploying:
 ## Security Review Checklist
 
 - Search for real tokens and API keys before committing.
-- Confirm `.env` is not staged; commit `.env.example` only.
+- Confirm `config/config.yaml` and `config/agent/config.agent.*.yaml` are not staged.
 - Keep provider `base_url`, API keys, Matrix access tokens, printer API keys,
   and Authorization headers out of tool schemas.
 - Keep provider secrets out of audit summaries and tool responses.

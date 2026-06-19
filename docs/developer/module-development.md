@@ -100,7 +100,7 @@ external APIs into internal dataclasses or simple dictionaries.
 
 Provider adapters should:
 
-- Read secrets only from settings that were populated by environment variables.
+- Read secrets only from settings loaded from YAML configuration.
 - Convert provider errors into `GatewayError` stable codes.
 - Hide provider-specific URLs and tokens from MCP responses.
 - Return bytes or normalized metadata to service code.

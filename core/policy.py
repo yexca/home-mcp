@@ -44,7 +44,7 @@ class PolicyEngine:
             token = authorization[7:].strip()
         if token:
             for caller_id, spec in self.settings.callers.items():
-                expected = os.getenv(spec.get("token_env", ""))
+                expected = spec.get("token") or os.getenv(spec.get("token_env", ""))
                 if expected and token == expected:
                     return CallerIdentity(
                         caller_id=caller_id,

@@ -80,7 +80,6 @@ class Phase6ModuleExtensionTests(unittest.TestCase):
             Path("Dockerfile"),
             Path("docker-compose.yml"),
             Path("config/config.main.yaml"),
-            Path(".env.example"),
             Path("docs/README.md"),
             Path("docs/developer/README.md"),
             Path("docs/developer/deployment.md"),

@@ -299,17 +299,13 @@ class McpTransportTests(unittest.TestCase):
             httpd.server_close()
             thread.join(timeout=5)
 
-    def test_admin_status_and_config_snapshot_require_admin_token(self) -> None:
+    def test_admin_status_and_config_yaml_require_admin_token(self) -> None:
         services, registry, dispatcher = fresh_gateway()
         with tempfile.TemporaryDirectory() as tmp:
-            previous_webui_dir = os.environ.get("WEBUI_CONFIG_DIR")
-            previous_agent_env_dir = os.environ.get("AGENT_ENV_DIR")
-            previous_image_model = os.environ.pop("IMAGE_API_MODEL", None)
-            os.environ["WEBUI_CONFIG_DIR"] = str(Path(tmp) / "config_webUI")
-            agent_env_dir = Path(tmp) / "agent-env"
-            agent_env_dir.mkdir()
-            (agent_env_dir / ".env").write_text("IMAGE_API_MODEL=model-from-mounted-env\n", encoding="utf-8")
-            os.environ["AGENT_ENV_DIR"] = str(agent_env_dir)
+            old_cwd = Path.cwd()
+            root = Path(tmp)
+            (root / "config").mkdir()
+            os.chdir(root)
             httpd = GatewayHTTPServer(
                 ("127.0.0.1", 0),
                 GatewayRequestHandler,
@@ -339,14 +335,23 @@ class McpTransportTests(unittest.TestCase):
                 payload = json.loads(response.read().decode("utf-8"))
                 self.assertTrue(payload["ok"])
                 self.assertIn("webui", payload)
-                self.assertEqual(payload["local_env"]["IMAGE_API_MODEL"], "model-from-mounted-env")
+                self.assertIn("IMAGE_API_MODEL", payload["local_env"])
                 conn.close()
 
                 save = HTTPConnection(host, port, timeout=5)
                 save.request(
                     "POST",
                     "/admin/api/config",
-                    body=json.dumps({"owned_fields": {"IMAGE_MODULE_ENABLED": "true"}}),
+                    body=json.dumps(
+                        {
+                            "owned_fields": {
+                                "IMAGE_MODULE_ENABLED": "true",
+                                "IMAGE_API_BASE_URL": "https://api.example.test",
+                                "IMAGE_API_MODEL": "test-image-model",
+                                "IMAGE_API_KEY": "test-image-key",
+                            }
+                        }
+                    ),
                     headers={
                         "Authorization": "Bearer test-host-token",
                         "Content-Type": "application/json",
@@ -356,34 +361,23 @@ class McpTransportTests(unittest.TestCase):
                 self.assertEqual(save_response.status, 200)
                 save_payload = json.loads(save_response.read().decode("utf-8"))
                 self.assertTrue(save_payload["ok"])
-                self.assertTrue((Path(tmp) / "config_webUI" / "current.json").is_file())
+                saved_config = (root / "config" / "config.yaml").read_text(encoding="utf-8")
+                self.assertIn("image:", saved_config)
+                self.assertIn("enabled: true", saved_config)
                 save.close()
             finally:
                 httpd.shutdown()
                 httpd.server_close()
                 thread.join(timeout=5)
-                if previous_webui_dir is None:
-                    os.environ.pop("WEBUI_CONFIG_DIR", None)
-                else:
-                    os.environ["WEBUI_CONFIG_DIR"] = previous_webui_dir
-                if previous_agent_env_dir is None:
-                    os.environ.pop("AGENT_ENV_DIR", None)
-                else:
-                    os.environ["AGENT_ENV_DIR"] = previous_agent_env_dir
-                if previous_image_model is not None:
-                    os.environ["IMAGE_API_MODEL"] = previous_image_model
+                os.chdir(old_cwd)
 
     def test_admin_config_can_save_matrix_agents(self) -> None:
         services, registry, dispatcher = fresh_gateway()
         with tempfile.TemporaryDirectory() as tmp:
-            previous = {
-                "WEBUI_CONFIG_DIR": os.environ.get("WEBUI_CONFIG_DIR"),
-                "AGENT_CONFIG_DIR": os.environ.get("AGENT_CONFIG_DIR"),
-                "AGENT_ENV_DIR": os.environ.get("AGENT_ENV_DIR"),
-            }
-            os.environ["WEBUI_CONFIG_DIR"] = str(Path(tmp) / "config_webUI")
-            os.environ["AGENT_CONFIG_DIR"] = str(Path(tmp) / "config" / "agent")
-            os.environ["AGENT_ENV_DIR"] = str(Path(tmp))
+            old_cwd = Path.cwd()
+            root = Path(tmp)
+            (root / "config").mkdir()
+            os.chdir(root)
             httpd = GatewayHTTPServer(
                 ("127.0.0.1", 0),
                 GatewayRequestHandler,
@@ -401,7 +395,10 @@ class McpTransportTests(unittest.TestCase):
                     "/admin/api/config",
                     body=json.dumps(
                         {
-                            "owned_fields": {"MATRIX_MODULE_ENABLED": "true"},
+                            "owned_fields": {
+                                "MATRIX_MODULE_ENABLED": "true",
+                                "MATRIX_HOMESERVER": "http://matrix.example.test",
+                            },
                             "agents": [
                                 {
                                     "name": "agent_web",
@@ -427,38 +424,27 @@ class McpTransportTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 payload = json.loads(response.read().decode("utf-8"))
                 self.assertTrue(payload["ok"])
-                self.assertEqual(payload["webui"]["owned_fields"]["ENABLED_AGENTS"], "agent_web")
-                self.assertTrue((Path(tmp) / "config" / "agent" / "config.agent.agent_web.yaml").is_file())
-                env_text = (Path(tmp) / ".env.agent.agent_web").read_text(encoding="utf-8")
-                self.assertIn("GATEWAY_TOKEN_AGENT_WEB=gateway-token", env_text)
-                self.assertIn("AGENT_WEB_MATRIX_ACCESS_TOKEN=matrix-token", env_text)
+                self.assertTrue((root / "config" / "agent" / "config.agent.agent_web.yaml").is_file())
+                config_text = (root / "config" / "config.yaml").read_text(encoding="utf-8")
+                agent_text = (root / "config" / "agent" / "config.agent.agent_web.yaml").read_text(encoding="utf-8")
+                self.assertIn("enabled:", config_text)
+                self.assertIn("- agent_web", config_text)
+                self.assertIn("token: gateway-token", agent_text)
+                self.assertIn("access_token: matrix-token", agent_text)
                 conn.close()
             finally:
                 httpd.shutdown()
                 httpd.server_close()
                 thread.join(timeout=5)
-                for key, value in previous.items():
-                    if value is None:
-                        os.environ.pop(key, None)
-                    else:
-                        os.environ[key] = value
+                os.chdir(old_cwd)
 
-    def test_admin_config_falls_back_to_webui_agent_dirs_when_agent_mount_is_read_only(self) -> None:
+    def test_admin_config_rejects_enabled_module_with_missing_required_fields(self) -> None:
         services, registry, dispatcher = fresh_gateway()
         with tempfile.TemporaryDirectory() as tmp:
-            previous = {
-                "WEBUI_CONFIG_DIR": os.environ.get("WEBUI_CONFIG_DIR"),
-                "AGENT_CONFIG_DIR": os.environ.get("AGENT_CONFIG_DIR"),
-                "AGENT_ENV_DIR": os.environ.get("AGENT_ENV_DIR"),
-            }
+            old_cwd = Path.cwd()
             root = Path(tmp)
-            read_only_config = root / "read-only-config"
-            read_only_env = root / "read-only-env"
-            read_only_config.write_text("not a directory", encoding="utf-8")
-            read_only_env.write_text("not a directory", encoding="utf-8")
-            os.environ["WEBUI_CONFIG_DIR"] = str(root / "config_webUI")
-            os.environ["AGENT_CONFIG_DIR"] = str(read_only_config)
-            os.environ["AGENT_ENV_DIR"] = str(read_only_env)
+            (root / "config").mkdir()
+            os.chdir(root)
             httpd = GatewayHTTPServer(
                 ("127.0.0.1", 0),
                 GatewayRequestHandler,
@@ -474,46 +460,24 @@ class McpTransportTests(unittest.TestCase):
                 conn.request(
                     "POST",
                     "/admin/api/config",
-                    body=json.dumps(
-                        {
-                            "owned_fields": {"MATRIX_MODULE_ENABLED": "true"},
-                            "agents": [
-                                {
-                                    "name": "agent1",
-                                    "caller": {"shared_artifact_read": False},
-                                    "matrix": {"account": "agent1"},
-                                    "high_risk_tools": ["matrix_send_text"],
-                                }
-                            ],
-                        }
-                    ),
+                    body=json.dumps({"owned_fields": {"MATRIX_MODULE_ENABLED": "true"}}),
                     headers={
                         "Authorization": "Bearer test-host-token",
                         "Content-Type": "application/json",
                     },
                 )
                 response = conn.getresponse()
-                self.assertEqual(response.status, 200)
+                self.assertEqual(response.status, 400)
                 payload = json.loads(response.read().decode("utf-8"))
-                self.assertTrue(payload["ok"])
-                owned = payload["webui"]["owned_fields"]
-                self.assertEqual(owned["ENABLED_AGENTS"], "agent1")
-                self.assertIn("config_webUI", owned["AGENT_CONFIG_DIR"])
-                self.assertIn("config_webUI", owned["AGENT_ENV_DIR"])
-                fallback_config = Path(owned["AGENT_CONFIG_DIR"])
-                fallback_env = Path(owned["AGENT_ENV_DIR"])
-                self.assertTrue((fallback_config / "config.agent.agent1.yaml").is_file())
-                self.assertTrue((fallback_env / ".env.agent.agent1").is_file())
+                self.assertFalse(payload["ok"])
+                self.assertIn("MATRIX_HOMESERVER", payload["error"])
+                self.assertFalse((root / "config" / "config.yaml").exists())
                 conn.close()
             finally:
                 httpd.shutdown()
                 httpd.server_close()
                 thread.join(timeout=5)
-                for key, value in previous.items():
-                    if value is None:
-                        os.environ.pop(key, None)
-                    else:
-                        os.environ[key] = value
+                os.chdir(old_cwd)
 
 
 def _read_sse_event(response) -> dict[str, str]:

@@ -16,11 +16,11 @@ limits:
 callers:
   host_assistant:
     role: admin
-    token_env: GATEWAY_TOKEN_HOST
+    token: test-host-token
     shared_artifact_read: true
   role_default:
     role: role_play
-    token_env: GATEWAY_TOKEN_ROLE_DEFAULT
+    token: test-role-token
     shared_artifact_read: false
 
 modules:

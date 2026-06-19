@@ -90,7 +90,7 @@ const STRINGS = {
     disconnected: "未连接",
     connect: "连接",
     adminToken: "Admin Token",
-    adminTokenPlaceholder: "GATEWAY_TOKEN_HOST 的值，不带 Bearer",
+    adminTokenPlaceholder: "config/config.yaml 中 host_assistant.token 的值",
     footerHint: "保存后如模块开关变化，需要重启服务重新注册工具。",
     themeSystem: "跟随系统",
     themeLight: "日间",
@@ -194,7 +194,7 @@ const STRINGS = {
     disconnected: "Disconnected",
     connect: "Connect",
     adminToken: "Admin Token",
-    adminTokenPlaceholder: "Value of GATEWAY_TOKEN_HOST, without Bearer",
+    adminTokenPlaceholder: "Value of callers.host_assistant.token in config/config.yaml",
     footerHint: "Restart the service after module switch changes so tools can be registered again.",
     themeSystem: "System",
     themeLight: "Light",
@@ -216,8 +216,8 @@ const STRINGS = {
     addAgentTitle: "Add agent",
     existingConfig: "Existing config fragment",
     newConfig: "New config",
-    existingTokenFile: "Existing token file",
-    newTokenFile: "New token file",
+    existingTokenFile: "Token in YAML",
+    newTokenFile: "New token in YAML",
     noAgentTitle: "No agents yet",
     noAgentBody: "Click + above, enter a name, then create a Matrix agent config.",
     modules: {
@@ -428,7 +428,7 @@ function updateHeader() {
 }
 
 function updateFooter() {
-  $("#snapshotInfo").textContent = `WebUI snapshot: ${lastStatus?.webui?.active_snapshot || "-"}`;
+  $("#snapshotInfo").textContent = `Config: ${lastStatus?.webui?.active_snapshot || "-"}`;
 }
 
 function renderPage() {
@@ -659,7 +659,7 @@ function agentPanel(agent) {
       <div class="agent-panel-head">
         <div>
           <h3>${escapeHtml(agent.name)}</h3>
-          <p>${agent.has_config ? t("existingConfig") : t("newConfig")} · ${agent.has_env ? t("existingTokenFile") : t("newTokenFile")}</p>
+          <p>${agent.has_config ? t("existingConfig") : t("newConfig")} · ${agent.caller.gateway_token_configured || agent.matrix.access_token_configured ? t("existingTokenFile") : t("newTokenFile")}</p>
         </div>
         <button type="button" class="secondary danger" id="removeAgent">${t("remove")}</button>
       </div>
@@ -709,9 +709,8 @@ function environmentRows() {
   const rows = [
     ["Python", env.python?.available, env.python?.output || "-"],
     ["PowerShell", env.powershell?.available, env.powershell?.output || "-"],
-    [".env", env.dotenv?.exists, env.dotenv?.path],
-    [".env.example", env.dotenv_example?.exists, env.dotenv_example?.path],
-    ["WebUI current", env.webui_current?.exists, env.webui_current?.path],
+    ["Config main", env.config_main?.exists, env.config_main?.path],
+    ["Config user", env.config_user?.exists, env.config_user?.path],
     ["Agent config", env.agent_config_dir?.exists, env.agent_config_dir?.path],
     ["Artifacts", env.artifact_root?.exists, env.artifact_root?.path],
     ["Database", env.database_path?.exists, env.database_path?.path],
@@ -812,7 +811,6 @@ function addAgent() {
     renderPage();
     return;
   }
-  const tokenBase = cleaned.replace(/[^A-Za-z0-9]/g, "_").toUpperCase();
   draftAgents.push({
     name: cleaned,
     enabled: true,
@@ -820,7 +818,6 @@ function addAgent() {
     has_env: false,
     caller: {
       role: "role_play",
-      token_env: `GATEWAY_TOKEN_${tokenBase}`,
       shared_artifact_read: false,
       gateway_token_configured: false,
       gateway_token: "",
@@ -828,8 +825,6 @@ function addAgent() {
     matrix: {
       enabled: true,
       account: cleaned,
-      homeserver_env: "MATRIX_HOMESERVER",
-      access_token_env: `${tokenBase}_MATRIX_ACCESS_TOKEN`,
       access_token_configured: false,
       access_token: "",
     },
@@ -911,10 +906,8 @@ function normalizeAgents(agents) {
     name: agent.name,
     enabled: agent.enabled !== false,
     has_config: !!agent.has_config,
-    has_env: !!agent.has_env,
     caller: {
       role: agent.caller?.role || "role_play",
-      token_env: agent.caller?.token_env || "",
       shared_artifact_read: !!agent.caller?.shared_artifact_read,
       gateway_token_configured: !!agent.caller?.gateway_token_configured,
       gateway_token: "",
@@ -922,8 +915,6 @@ function normalizeAgents(agents) {
     matrix: {
       enabled: agent.matrix?.enabled !== false,
       account: agent.matrix?.account || agent.name,
-      homeserver_env: agent.matrix?.homeserver_env || "MATRIX_HOMESERVER",
-      access_token_env: agent.matrix?.access_token_env || "",
       access_token_configured: !!agent.matrix?.access_token_configured,
       access_token: "",
     },

@@ -64,8 +64,8 @@ The gateway supports three call shapes:
 - WebUI and admin:
   - `GET /` redirects to `/webui/`.
   - `GET /webui/` serves the static local configuration UI.
-  - `GET /admin/api/status` returns admin-only runtime, environment, and WebUI ownership status.
-  - `POST /admin/api/config` saves WebUI-owned configuration fields under `config_webUI/`.
+  - `GET /admin/api/status` returns admin-only runtime, configuration, and environment status.
+  - `POST /admin/api/config` saves configuration fields to `config/config.yaml` and `config/agent/*.yaml`.
 - HTTP health/readiness:
   - `GET /healthz`
   - `GET /readyz`
@@ -83,10 +83,8 @@ Bearer token use the same ownership/grant checks as `artifact_get`; requests
 without Bearer must include a valid short-lived `expires` and `signature` query
 pair from artifact metadata.
 
-Admin API calls require an admin Bearer token. The WebUI writes only
-`config_webUI/` snapshots; it does not write host `.env` files from inside the
-container. At startup, WebUI-owned fields override matching local `.env` values,
-while non-owned fields continue to come from local configuration.
+Admin API calls require an admin Bearer token. The WebUI writes YAML config
+directly under `config/`, which is mounted read-write by Docker Compose.
 
 ## Storage Model
 

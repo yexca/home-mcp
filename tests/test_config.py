@@ -22,7 +22,6 @@ _MODULE_SWITCH_ENV_VARS = (
     "TTS_MODULE_ENABLED",
     "MATRIX_MODULE_ENABLED",
     "PRINTER_MODULE_ENABLED",
-    "ENABLED_AGENTS",
 )
 
 
@@ -41,41 +40,25 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings.artifacts["root"], "./tmp/test-artifacts")
         self.assertIn("host_assistant", settings.callers)
 
-    def test_artifact_public_base_url_can_be_overridden_by_env(self) -> None:
-        previous = os.environ.get("ARTIFACT_PUBLIC_BASE_URL")
-        try:
-            os.environ["ARTIFACT_PUBLIC_BASE_URL"] = "http://home-mcp:8787/artifacts"
-            settings = load_settings("tests/config/test.config.yaml")
-            self.assertEqual(settings.artifacts["public_base_url"], "http://home-mcp:8787/artifacts")
-        finally:
-            if previous is None:
-                os.environ.pop("ARTIFACT_PUBLIC_BASE_URL", None)
-            else:
-                os.environ["ARTIFACT_PUBLIC_BASE_URL"] = previous
+    def test_artifact_public_base_url_comes_from_yaml(self) -> None:
+        settings = load_settings("tests/config/test.config.yaml")
+        self.assertEqual(settings.artifacts["public_base_url"], "http://127.0.0.1:8787/artifacts")
 
-    def test_module_enabled_can_be_overridden_by_env(self) -> None:
-        previous = {
-            "MATRIX_ACCESS_TOKEN": os.environ.get("MATRIX_ACCESS_TOKEN"),
-            "TTS_MODULE_ENABLED": os.environ.get("TTS_MODULE_ENABLED"),
-        }
+    def test_module_enabled_comes_from_yaml(self) -> None:
+        previous = {"MATRIX_ACCESS_TOKEN": os.environ.get("MATRIX_ACCESS_TOKEN")}
         try:
             os.environ["MATRIX_ACCESS_TOKEN"] = "test-matrix-token"
-            os.environ["TTS_MODULE_ENABLED"] = "false"
             settings = load_settings("tests/config/phase4.test.config.yaml")
-            self.assertFalse(settings.modules["tts"]["enabled"])
+            self.assertTrue(settings.modules["tts"]["enabled"])
         finally:
             _restore_env(previous)
 
-    def test_module_timeout_can_be_overridden_by_env(self) -> None:
-        previous = {
-            "MATRIX_ACCESS_TOKEN": os.environ.get("MATRIX_ACCESS_TOKEN"),
-            "TTS_TOTAL_TIMEOUT_SECONDS": os.environ.get("TTS_TOTAL_TIMEOUT_SECONDS"),
-        }
+    def test_module_timeout_comes_from_yaml(self) -> None:
+        previous = {"MATRIX_ACCESS_TOKEN": os.environ.get("MATRIX_ACCESS_TOKEN")}
         try:
             os.environ["MATRIX_ACCESS_TOKEN"] = "test-matrix-token"
-            os.environ["TTS_TOTAL_TIMEOUT_SECONDS"] = "3.5"
             settings = load_settings("tests/config/phase4.test.config.yaml")
-            self.assertEqual(settings.modules["tts"]["total_timeout_seconds"], 3.5)
+            self.assertEqual(settings.modules["matrix"]["timeout_seconds"], 2)
         finally:
             _restore_env(previous)
 
@@ -87,7 +70,6 @@ class ConfigTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 (root / "config").mkdir()
-                (root / ".env.example").write_text("TTS_MODULE_ENABLED=false\n", encoding="utf-8")
                 (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
@@ -135,7 +117,6 @@ class ConfigTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 (root / "config").mkdir()
-                (root / ".env.example").write_text("TTS_MODULE_ENABLED=false\n", encoding="utf-8")
                 (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
@@ -175,7 +156,7 @@ class ConfigTests(unittest.TestCase):
             if old_config_path is not None:
                 os.environ["CONFIG_PATH"] = old_config_path
 
-    def test_default_loads_main_config_when_config_path_is_not_set(self) -> None:
+    def test_default_merges_local_config_yaml_when_config_path_is_not_set(self) -> None:
         old_cwd = Path.cwd()
         old_config_path = os.environ.pop("CONFIG_PATH", None)
         try:
@@ -213,9 +194,9 @@ class ConfigTests(unittest.TestCase):
                 os.chdir(root)
                 try:
                     settings = load_settings()
-                    self.assertEqual(settings.server["port"], 8787)
-                    self.assertEqual(settings.artifacts["root"], "./base-artifacts")
-                    self.assertEqual(settings.database["path"], "./base-artifacts/metadata.sqlite3")
+                    self.assertEqual(settings.server["port"], 9898)
+                    self.assertEqual(settings.artifacts["root"], "./user-artifacts")
+                    self.assertEqual(settings.database["path"], "./user-artifacts/metadata.sqlite3")
                 finally:
                     os.chdir(old_cwd)
         finally:
@@ -223,7 +204,7 @@ class ConfigTests(unittest.TestCase):
             if old_config_path is not None:
                 os.environ["CONFIG_PATH"] = old_config_path
 
-    def test_env_example_supplies_defaults_and_env_overrides_it(self) -> None:
+    def test_environment_placeholders_are_still_supported_for_advanced_configs(self) -> None:
         old_cwd = Path.cwd()
         old_config_path = os.environ.pop("CONFIG_PATH", None)
         previous_host = os.environ.pop("TEST_SERVER_HOST", None)
@@ -231,8 +212,6 @@ class ConfigTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 (root / "config").mkdir()
-                (root / ".env.example").write_text("TEST_SERVER_HOST=0.0.0.0\n", encoding="utf-8")
-                (root / ".env").write_text("TEST_SERVER_HOST=127.0.0.1\n", encoding="utf-8")
                 (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
@@ -250,6 +229,7 @@ class ConfigTests(unittest.TestCase):
                 )
                 os.chdir(root)
                 try:
+                    os.environ["TEST_SERVER_HOST"] = "127.0.0.1"
                     settings = load_settings()
                     self.assertEqual(settings.server["host"], "127.0.0.1")
                 finally:
@@ -262,18 +242,16 @@ class ConfigTests(unittest.TestCase):
             if old_config_path is not None:
                 os.environ["CONFIG_PATH"] = old_config_path
 
-    def test_webui_owned_fields_override_local_env(self) -> None:
+    def test_config_yaml_overrides_main_config(self) -> None:
         old_cwd = Path.cwd()
         old_config_path = os.environ.pop("CONFIG_PATH", None)
         previous = {
-            "WEBUI_CONFIG_DIR": os.environ.pop("WEBUI_CONFIG_DIR", None),
             "TTS_MODULE_ENABLED": os.environ.pop("TTS_MODULE_ENABLED", None),
         }
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 (root / "config").mkdir()
-                (root / ".env").write_text("TTS_MODULE_ENABLED=false\n", encoding="utf-8")
                 (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
@@ -295,13 +273,8 @@ class ConfigTests(unittest.TestCase):
                     ),
                     encoding="utf-8",
                 )
-                (root / "config_webUI" / "snapshots").mkdir(parents=True)
-                (root / "config_webUI" / "current.json").write_text(
-                    '{"active_snapshot":"snapshots/webui.json"}',
-                    encoding="utf-8",
-                )
-                (root / "config_webUI" / "snapshots" / "webui.json").write_text(
-                    '{"owned_fields":{"TTS_MODULE_ENABLED":"true"}}',
+                (root / "config" / "config.yaml").write_text(
+                    "modules:\n  tts:\n    enabled: true\n",
                     encoding="utf-8",
                 )
                 os.chdir(root)
@@ -316,47 +289,34 @@ class ConfigTests(unittest.TestCase):
             if old_config_path is not None:
                 os.environ["CONFIG_PATH"] = old_config_path
 
-    def test_enabled_agents_merge_agent_env_and_config_fragments(self) -> None:
+    def test_enabled_agents_merge_agent_config_fragments(self) -> None:
         old_cwd = Path.cwd()
         old_config_path = os.environ.pop("CONFIG_PATH", None)
         previous = {
-            "ENABLED_AGENTS": os.environ.pop("ENABLED_AGENTS", None),
-            "GATEWAY_TOKEN_AGENT1": os.environ.pop("GATEWAY_TOKEN_AGENT1", None),
-            "AGENT1_MATRIX_ACCESS_TOKEN": os.environ.pop("AGENT1_MATRIX_ACCESS_TOKEN", None),
             "MATRIX_MODULE_ENABLED": os.environ.pop("MATRIX_MODULE_ENABLED", None),
         }
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 (root / "config" / "agent").mkdir(parents=True)
-                (root / ".env").write_text("ENABLED_AGENTS=agent1\n", encoding="utf-8")
-                (root / ".env.agent.agent1").write_text(
-                    "\n".join(
-                        [
-                            "GATEWAY_TOKEN_AGENT1=test-agent-token",
-                            "AGENT1_MATRIX_ACCESS_TOKEN=test-matrix-token",
-                        ]
-                    ),
-                    encoding="utf-8",
-                )
+                (root / "config" / "config.yaml").write_text("agents:\n  enabled: [agent1]\n", encoding="utf-8")
                 (root / "config" / "agent" / "config.agent.agent1.yaml").write_text(
                     "\n".join(
                         [
                             "caller:",
                             "  role: role_play",
-                            "  token_env: GATEWAY_TOKEN_AGENT1",
+                            "  token: test-agent-token",
                             "matrix:",
                             "  enabled: true",
                             "  account: agent1",
-                            "  homeserver_env: MATRIX_HOMESERVER",
-                            "  access_token_env: AGENT1_MATRIX_ACCESS_TOKEN",
+                            "  homeserver: http://matrix.test",
+                            "  access_token: test-matrix-token",
                             "high_risk_tools:",
                             "  - matrix_send_text",
                         ]
                     ),
                     encoding="utf-8",
                 )
-                (root / ".env.example").write_text("MATRIX_HOMESERVER=http://matrix.test\n", encoding="utf-8")
                 (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
@@ -371,13 +331,13 @@ class ConfigTests(unittest.TestCase):
                             "callers:",
                             "  host_assistant:",
                             "    role: admin",
-                            "    token_env: GATEWAY_TOKEN_HOST",
+                            "    token: test-host-token",
                             "policy:",
                             "  high_risk_allowed_callers: {}",
                             "modules:",
                             "  matrix:",
                             "    enabled: false",
-                            "    homeserver: ${MATRIX_HOMESERVER}",
+                            "    homeserver: http://matrix.test",
                             "    access_token: ''",
                             "    timeout_seconds: 2",
                         ]
@@ -388,12 +348,11 @@ class ConfigTests(unittest.TestCase):
                 try:
                     settings = load_settings()
                     self.assertIn("agent1", settings.callers)
-                    self.assertEqual(settings.callers["agent1"]["token_env"], "GATEWAY_TOKEN_AGENT1")
+                    self.assertEqual(settings.callers["agent1"]["token"], "test-agent-token")
                     self.assertTrue(settings.modules["matrix"]["enabled"])
                     self.assertEqual(settings.modules["matrix"]["caller_accounts"]["agent1"], "agent1")
                     self.assertEqual(settings.modules["matrix"]["accounts"]["agent1"]["access_token"], "test-matrix-token")
                     self.assertEqual(settings.policy["high_risk_allowed_callers"]["agent1"], ["matrix_send_text"])
-                    self.assertEqual(os.environ["GATEWAY_TOKEN_AGENT1"], "test-agent-token")
                 finally:
                     os.chdir(old_cwd)
         finally:
@@ -402,33 +361,19 @@ class ConfigTests(unittest.TestCase):
             if old_config_path is not None:
                 os.environ["CONFIG_PATH"] = old_config_path
 
-    def test_root_env_module_switch_overrides_agent_matrix_enablement(self) -> None:
+    def test_yaml_module_switch_overrides_agent_matrix_enablement(self) -> None:
         old_cwd = Path.cwd()
         old_config_path = os.environ.pop("CONFIG_PATH", None)
         previous = {
-            "ENABLED_AGENTS": os.environ.pop("ENABLED_AGENTS", None),
-            "AGENT1_MATRIX_ACCESS_TOKEN": os.environ.pop("AGENT1_MATRIX_ACCESS_TOKEN", None),
             "MATRIX_MODULE_ENABLED": os.environ.pop("MATRIX_MODULE_ENABLED", None),
         }
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 (root / "config" / "agent").mkdir(parents=True)
-                (root / ".env").write_text(
-                    "\n".join(["ENABLED_AGENTS=agent1", "MATRIX_MODULE_ENABLED=false"]),
-                    encoding="utf-8",
-                )
-                (root / ".env.agent.agent1").write_text("AGENT1_MATRIX_ACCESS_TOKEN=test-matrix-token\n", encoding="utf-8")
+                (root / "config" / "config.yaml").write_text("agents:\n  enabled: [agent1]\nmodules:\n  matrix:\n    enabled: false\n", encoding="utf-8")
                 (root / "config" / "agent" / "config.agent.agent1.yaml").write_text(
-                    "\n".join(
-                        [
-                            "matrix:",
-                            "  enabled: true",
-                            "  access_token_env: AGENT1_MATRIX_ACCESS_TOKEN",
-                            "high_risk_tools:",
-                            "  - matrix_send_text",
-                        ]
-                    ),
+                    "matrix:\n  enabled: true\n  access_token: test-matrix-token\nhigh_risk_tools:\n  - matrix_send_text\n",
                     encoding="utf-8",
                 )
                 (root / "config" / "config.main.yaml").write_text(
@@ -463,17 +408,14 @@ class ConfigTests(unittest.TestCase):
         old_cwd = Path.cwd()
         old_config_path = os.environ.pop("CONFIG_PATH", None)
         previous = {
-            "ENABLED_AGENTS": os.environ.pop("ENABLED_AGENTS", None),
-            "AGENT1_MATRIX_ACCESS_TOKEN": os.environ.pop("AGENT1_MATRIX_ACCESS_TOKEN", None),
         }
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 (root / "config" / "agent").mkdir(parents=True)
-                (root / ".env").write_text("ENABLED_AGENTS=agent1\n", encoding="utf-8")
-                (root / ".env.agent.agent1").write_text("AGENT1_MATRIX_ACCESS_TOKEN=test-matrix-token\n", encoding="utf-8")
+                (root / "config" / "config.yaml").write_text("agents:\n  enabled: [agent1]\n", encoding="utf-8")
                 (root / "config" / "agent" / "config.agent.agent1.yaml").write_text(
-                    "matrix:\n  enabled: true\n  access_token_env: AGENT1_MATRIX_ACCESS_TOKEN\n",
+                    "matrix:\n  enabled: true\n  access_token: test-matrix-token\n",
                     encoding="utf-8",
                 )
                 (root / "config" / "config.main.yaml").write_text(
@@ -529,7 +471,7 @@ class ConfigTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 (root / "config").mkdir()
-                (root / ".env.example").write_text("TEST_SERVER_PORT=8787\n", encoding="utf-8")
+                (root / "template.env").write_text("TEST_SERVER_PORT=8787\n", encoding="utf-8")
                 (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
@@ -560,6 +502,7 @@ class ConfigTests(unittest.TestCase):
                 )
                 os.chdir(root)
                 try:
+                    os.environ["TEST_SERVER_PORT"] = "8787"
                     os.environ["CONFIG_PATH"] = "custom.config.yaml"
                     settings = load_settings()
                     self.assertEqual(settings.server["port"], 9898)
@@ -606,16 +549,9 @@ class ConfigTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 (root / "config").mkdir()
-                (root / ".env.example").write_text(
-                    "\n".join(
-                        [
-                            "IMAGE_API_BASE_URL=https://api.example.test",
-                            "IMAGE_API_MODEL=test-image-model",
-                            "IMAGE_API_KEY=test-image-api-key",
-                        ]
-                    ),
-                    encoding="utf-8",
-                )
+                os.environ["IMAGE_API_BASE_URL"] = "https://api.example.test"
+                os.environ["IMAGE_API_MODEL"] = "test-image-model"
+                os.environ["IMAGE_API_KEY"] = "test-image-api-key"
                 (root / "config" / "config.main.yaml").write_text(
                     "\n".join(
                         [
@@ -657,22 +593,20 @@ class ConfigTests(unittest.TestCase):
             if old_config_path is not None:
                 os.environ["CONFIG_PATH"] = old_config_path
 
-    def test_image_provider_timeout_override_uses_openai_compatible_path(self) -> None:
+    def test_image_provider_timeout_comes_from_yaml(self) -> None:
         previous = {
             "IMAGE_API_BASE_URL": os.environ.get("IMAGE_API_BASE_URL"),
             "IMAGE_API_MODEL": os.environ.get("IMAGE_API_MODEL"),
             "IMAGE_API_KEY": os.environ.get("IMAGE_API_KEY"),
-            "IMAGE_PROVIDER_TIMEOUT_SECONDS": os.environ.get("IMAGE_PROVIDER_TIMEOUT_SECONDS"),
         }
         try:
             os.environ["IMAGE_API_BASE_URL"] = "https://api.example.test"
             os.environ["IMAGE_API_MODEL"] = "test-image-model"
             os.environ["IMAGE_API_KEY"] = "test-image-api-key"
-            os.environ["IMAGE_PROVIDER_TIMEOUT_SECONDS"] = "7"
 
             settings = load_settings("tests/config/image.test.config.yaml")
 
-            self.assertEqual(settings.modules["image"]["openai_compatible"]["timeout_seconds"], 7)
+            self.assertEqual(settings.modules["image"]["openai_compatible"]["timeout_seconds"], 5)
             self.assertEqual(settings.modules["image"]["provider"], "openai_compatible")
         finally:
             for key, value in previous.items():

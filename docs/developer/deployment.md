@@ -5,21 +5,16 @@
 Start the Gateway:
 
 ```powershell
-Copy-Item .env.example .env
-# Edit .env and set GATEWAY_TOKEN_HOST, GATEWAY_TOKEN_ROLE_DEFAULT,
-# and ARTIFACT_SIGNING_SECRET.
 docker compose up --build
 ```
 
-Open the local WebUI in a browser:
+Open the local WebUI:
 
 ```text
 http://127.0.0.1:8787
 ```
 
-The root URL redirects to `/webui/`. The WebUI stores its owned-field snapshots
-under `config_webUI/`; Docker Compose mounts that directory read-write into the
-container. It does not write the host `.env` directly.
+The root URL redirects to `/webui/`. The WebUI writes configuration directly to `config/config.yaml` and `config/agent/*.yaml`; Docker Compose mounts the whole `config/` directory read-write into the container.
 
 The host can connect ZeroClaw to:
 
@@ -41,45 +36,16 @@ url = "http://home-mcp:8787/mcp"
 deferred_loading = true
 ```
 
-Artifact download links are normally derived from the address used to call the
-MCP endpoint. A client using `http://127.0.0.1:8787/mcp` receives
-`http://127.0.0.1:8787/artifacts/...`; a client using
-`http://192.168.1.23:8787/mcp` receives
-`http://192.168.1.23:8787/artifacts/...`.
-The returned artifact URLs include `expires` and `signature` query parameters
-and can be fetched directly without the MCP Bearer token until they expire.
-
-When the gateway cannot derive a request base URL, it falls back to
-`ARTIFACT_PUBLIC_BASE_URL`. The default matches host-local use:
-
-```dotenv
-ARTIFACT_PUBLIC_BASE_URL=http://127.0.0.1:8787/artifacts
-```
-
-For mixed host/container access, either make both clients call MCP through the
-same reachable base URL or set `ARTIFACT_PUBLIC_BASE_URL` in `.env` to that
-unified gateway URL:
-
-```dotenv
-ARTIFACT_PUBLIC_BASE_URL=http://192.168.1.23:8787/artifacts
-```
-
-Use the same base for the ZeroClaw MCP URL, replacing `/artifacts` with `/mcp`.
+Artifact download links are normally derived from the address used to call the MCP endpoint. When the gateway cannot derive a request base URL, it falls back to `artifacts.public_base_url` in YAML.
 
 ## Configuration
 
-- Compose mounts generated agent config and ComfyUI workflow config into the container.
-- Compose mounts `config_webUI/` read-write for WebUI-owned configuration snapshots.
-- Compose reads local values from the project-root `.env`, created from
-  `.env.example`.
-- WebUI-owned values override matching local `.env` values at gateway startup.
-  Values not owned by the WebUI still come from `.env`.
-- Run `tools/apply_webUI_config.ps1` on the host to apply WebUI-owned values to
-  `.env` and archive the active WebUI config under `config_webUI/backup/`.
-- `ARTIFACT_SIGNING_SECRET` signs short-lived artifact download URLs.
-- Artifacts and SQLite metadata live under the project-root `./artifacts`
-  directory, matching the default environment values.
-- Secrets are supplied only through environment variables, never through checked-in YAML.
+- Compose mounts `./config:/app/config` read-write.
+- `config/config.main.yaml` is the project baseline.
+- `config/config.yaml` is the ignored local runtime config.
+- Agent config and tokens live in `config/agent/config.agent.<name>.yaml`.
+- `artifacts.signed_url_secret` signs short-lived artifact download URLs.
+- Artifacts and SQLite metadata live under `./artifacts` by default.
 - Keep high-risk tools out of ZeroClaw auto approve by default.
 
 ## Health Checks

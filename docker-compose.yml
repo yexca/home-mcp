@@ -5,17 +5,10 @@ services:
       dockerfile: Dockerfile
     image: yexca/home-mcp-gateway:0.2.1
     container_name: home-mcp-gateway
-    env_file:
-      - .env
-    environment:
-      AGENT_ENV_DIR: /app/agent-env
     ports:
       - "8787:8787"
     volumes:
-      - ./config/agent:/app/config/agent:ro
-      - ./config_webUI:/app/config_webUI
-      - ./:/app/agent-env:ro
-      - ./config/comfyui:/app/config/comfyui:ro
+      - ./config:/app/config
       - ./artifacts:/app/artifacts
     extra_hosts:
       - "host.docker.internal:host-gateway"

@@ -2,7 +2,7 @@
 
 `home_mcp_gateway` 是一个本地 HTTP/SSE MCP 网关，可供 ZeroClaw 和其他 MCP 客户端使用。它把工具调用、权限策略、artifact 存储、job 状态和审计记录集中在一个本地 MCP 入口后面。
 
-普通用户只需要编辑 `.env`。仓库中的 `config/config.main.yaml` 是程序主配置基线，除非你正在开发网关本身，否则不建议修改它。
+普通用户只需要编辑 `config/` 下的 YAML。仓库中的 `config/config.main.yaml` 是程序默认基线，未追踪的 `config/config.yaml` 是你的本地运行配置。
 
 ## 快速开始
 
@@ -11,19 +11,11 @@
 - Docker 和 Docker Compose
 - Windows PowerShell，用于辅助脚本
 
-创建本地环境变量文件：
+编辑 `config/config.yaml`，至少设置：
 
-```powershell
-Copy-Item .env.example .env
-```
-
-编辑 `.env`，至少设置这些值：
-
-```dotenv
-GATEWAY_TOKEN_HOST=change-this
-GATEWAY_TOKEN_ROLE_DEFAULT=change-this-role
-ARTIFACT_SIGNING_SECRET=change-this-secret
-```
+- `callers.host_assistant.token`
+- `callers.role_default.token`
+- `artifacts.signed_url_secret`
 
 使用 Docker Compose 构建并运行：
 
@@ -73,13 +65,13 @@ python -m app.main
 
 ## Agent
 
-在 `.env` 中设置 `ENABLED_AGENTS`，然后运行根目录便捷脚本：
+在 `config/config.yaml` 中设置 `agents.enabled`，然后运行根目录便捷脚本：
 
 ```powershell
 .\apply_agent.bat
 ```
 
-这个脚本会调用 `tools/apply_agent.ps1`，并管理 `config/agent/config.agent.<name>.yaml` 和 `.env.agent.<name>` 文件。
+这个脚本会调用 `tools/apply_agent.ps1`，并管理 `config/agent/config.agent.<name>.yaml` 文件。agent 的 gateway token 和 Matrix token 都写在对应的 YAML 中。
 
 ## 测试
 

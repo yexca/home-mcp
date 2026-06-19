@@ -4,7 +4,7 @@ This directory contains the project documentation for `home_mcp_gateway`.
 
 ## Sections
 
-- [User Guide](user/README.md): setup, Docker, MCP client configuration, agents, and environment variables.
+- [User Guide](user/README.md): setup, Docker, MCP client configuration, agents, and YAML configuration.
 - [Developer Guide](developer/README.md): current architecture, configuration, tool contracts, module development, deployment, testing, and release notes.
 - [Original Development Notes](original/README.md): preserved early requirements, design, implementation planning, and verification notes.
 

@@ -14,7 +14,7 @@ COPY modules ./modules
 COPY tools ./tools
 COPY transport ./transport
 COPY webui ./webui
-COPY pyproject.toml README.md .env.example ./
+COPY pyproject.toml README.md ./
 
 RUN mkdir -p /app/artifacts
 
