@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.2 - Runtime and documentation refresh
+
+- Refreshed user-facing README files and ignore rules for the current local runtime layout.
+- Updated runtime version metadata, Docker Compose image tagging, image download User-Agent, and packaged MCP skill metadata to `0.2.2`.
+
 ## v0.2.1 - Agent configuration fragments
 
 - Switched normal runtime configuration to ignored YAML under `config/config.yaml`.

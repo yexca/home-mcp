@@ -1,7 +1,7 @@
 ---
 name: mcp-image-send
 description: Generate or edit images through the local MCP gateway, then send the resulting image artifact to Matrix with matrix_send_image.
-version: 0.2.1
+version: 0.2.2
 author: yexca
 tags: [matrix, image, mcp, python]
 ---

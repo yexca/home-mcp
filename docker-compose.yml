@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: yexca/home-mcp-gateway:0.2.1
+    image: yexca/home-mcp-gateway:0.2.2
     container_name: home-mcp-gateway
     ports:
       - "8787:8787"
