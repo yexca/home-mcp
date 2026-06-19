@@ -40,6 +40,10 @@ def _string(value: str) -> str:
     return value.strip()
 
 
+def _string_list(value: str) -> list[str]:
+    return [item.strip() for item in re.split(r"[\n,;]", value) if item.strip()]
+
+
 def _bool(value: str) -> bool:
     normalized = value.strip().lower()
     if normalized in {"1", "true", "yes", "y", "on"}:
@@ -103,6 +107,7 @@ FIELD_PATHS: dict[str, tuple[tuple[str, ...], Callable[[str], Any]]] = {
     "MATRIX_MAX_TEXT_CHARS": (("modules", "matrix", "max_text_chars"), _number),
     "PRINTER_BRIDGE_URL": (("modules", "printer", "bridge_http", "url"), _string),
     "PRINTER_BRIDGE_API_KEY": (("modules", "printer", "bridge_http", "api_key"), _string),
+    "PRINTER_ALLOWED_PRINTERS": (("modules", "printer", "allowed_printers"), _string_list),
     "PRINTER_MAX_COPIES": (("modules", "printer", "max_copies"), _number),
     "PRINTER_MAX_FILE_BYTES": (("modules", "printer", "max_file_bytes"), _number),
     "PRINTER_BRIDGE_TIMEOUT_SECONDS": (("modules", "printer", "bridge_http", "timeout_seconds"), _number),
@@ -178,7 +183,7 @@ def handle_admin_post(handler, services: CoreServices, path: str) -> None:
             result = _write_user_config_fields(owned_fields)
             if agents is not None:
                 _write_prepared_agent_configs(agent_result)
-                _write_enabled_agents([agent["name"] for agent in agent_result["agents"]])
+                _write_enabled_agents([agent["name"] for agent in agent_result["agents"] if agent.get("enabled")])
         except (OSError, ValueError) as exc:
             _json(handler, {"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
@@ -226,6 +231,8 @@ def _config_field_values(config: dict[str, Any]) -> dict[str, str]:
         value = _get_nested(config, path)
         if isinstance(value, bool):
             values[name] = "true" if value else "false"
+        elif isinstance(value, list):
+            values[name] = "\n".join(str(item) for item in value)
         elif value is None:
             values[name] = ""
         else:
@@ -263,8 +270,6 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 def _environment_status(config: dict[str, Any]) -> dict[str, Any]:
     agent_config_dir = _agent_config_dir(config)
     return {
-        "powershell": _command_status("pwsh", "-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()")
-        or _command_status("powershell", "-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"),
         "python": _command_status("python", "--version"),
         "config_main": _path_status(Path("config/config.main.yaml")),
         "config_user": _path_status(USER_CONFIG_PATH),
@@ -408,13 +413,24 @@ def _prepare_agent_configs(raw_agents: Any, config: dict[str, Any]) -> dict[str,
             raise ValueError(f"duplicate agent name: {agent['name']}")
         seen.add(agent["name"])
         _fill_existing_agent_secrets(agent, config_dir)
+        if agent["enabled"]:
+            _validate_enabled_agent(agent)
         normalized.append(agent)
 
     return {
-        "agents": [{"name": agent["name"]} for agent in normalized],
+        "agents": [{"name": agent["name"], "enabled": agent["enabled"]} for agent in normalized],
         "agent_config_dir": str(config_dir),
         "_normalized": normalized,
     }
+
+
+def _validate_enabled_agent(agent: dict[str, Any]) -> None:
+    if not agent["caller"]["gateway_token"]:
+        raise ValueError(f"Gateway Token is required when agent is enabled: {agent['name']}")
+    if not agent["matrix"]["access_token"]:
+        raise ValueError(f"Matrix Access Token is required when agent is enabled: {agent['name']}")
+    if not agent["matrix"]["account"]:
+        raise ValueError(f"Matrix Account is required when agent is enabled: {agent['name']}")
 
 
 def _public_agent_result(prepared: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -478,6 +494,7 @@ def _normalize_agent(raw_agent: Any) -> dict[str, Any]:
     tools = [tool for tool in high_risk_tools if tool in MATRIX_TOOLS]
     return {
         "name": name,
+        "enabled": bool(raw_agent.get("enabled", True)),
         "caller": {
             "role": str(caller.get("role") or "role_play").strip(),
             "shared_artifact_read": bool(caller.get("shared_artifact_read", False)),
@@ -525,11 +542,13 @@ def _candidate_save_config(
     candidate = deepcopy(status_config)
     _apply_config_fields(candidate, owned_fields)
     if agent_result is not None:
-        agent_names = [agent["name"] for agent in agent_result["agents"]]
-        candidate.setdefault("agents", {})["enabled"] = agent_names
+        enabled_agent_names = [agent["name"] for agent in agent_result["agents"] if agent.get("enabled")]
+        candidate.setdefault("agents", {})["enabled"] = enabled_agent_names
         candidate.setdefault("agents", {})["config_dir"] = str(DEFAULT_AGENT_CONFIG_DIR).replace("\\", "/")
-        _prune_disabled_agent_config(candidate, _configured_agent_names(candidate) - set(agent_names))
+        _prune_disabled_agent_config(candidate, _configured_agent_names(candidate) - set(enabled_agent_names))
         for agent in agent_result.get("_normalized", []):
+            if not agent["enabled"]:
+                continue
             _merge_agent_fragment(candidate, agent["name"], _agent_config_content(agent))
     return candidate
 

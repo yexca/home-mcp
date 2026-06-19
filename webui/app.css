@@ -195,7 +195,9 @@ h3 {
 }
 
 .main {
+  width: min(100%, 1200px);
   min-width: 0;
+  margin: 0 auto;
   padding: 18px 24px 28px;
 }
 
@@ -233,6 +235,10 @@ h3 {
 
 .message.danger {
   border-left-color: var(--danger);
+}
+
+.message.warning {
+  border-left-color: var(--warning);
 }
 
 .dashboard-grid {
@@ -277,6 +283,10 @@ h3 {
   padding-bottom: 8px;
 }
 
+.form-grid.single {
+  grid-template-columns: 1fr;
+}
+
 .field {
   display: grid;
   gap: 6px;
@@ -304,6 +314,10 @@ h3 {
   border-left: 3px solid var(--danger);
 }
 
+.field.required textarea {
+  border-left: 3px solid var(--danger);
+}
+
 input {
   width: 100%;
   min-height: 38px;
@@ -314,8 +328,21 @@ input {
   color: var(--text);
 }
 
+textarea {
+  width: 100%;
+  min-height: 84px;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+
 input.invalid,
-input:invalid:focus {
+input:invalid:focus,
+textarea.invalid,
+textarea:invalid:focus {
   border-color: var(--danger);
   outline-color: color-mix(in srgb, var(--danger) 40%, transparent);
 }
@@ -533,6 +560,16 @@ button.danger {
   color: #ffffff;
 }
 
+.agent-tab.enabled::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--success);
+}
+
 .agent-add {
   width: 38px;
   padding: 0;
@@ -610,6 +647,12 @@ button.danger {
   backdrop-filter: blur(8px);
 }
 
+.matrix-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.1fr);
+  gap: 14px;
+}
+
 @media (max-width: 920px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -625,6 +668,7 @@ button.danger {
   }
 
   .dashboard-grid,
+  .matrix-layout,
   .form-grid,
   .status-grid,
   .module-switch-grid {

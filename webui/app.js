@@ -78,9 +78,26 @@ const FIELD_META = {
 
   PRINTER_BRIDGE_URL: { label: "field.bridgeUrl", requiredWhen: "printer" },
   PRINTER_BRIDGE_API_KEY: { label: "field.apiKey", secret: true },
+  PRINTER_ALLOWED_PRINTERS: { label: "field.allowedPrinters", requiredWhen: "printer", multiline: true },
   PRINTER_MAX_COPIES: { label: "field.maxCopies", type: "number" },
   PRINTER_MAX_FILE_BYTES: { label: "field.maxFileBytes", type: "number" },
   PRINTER_BRIDGE_TIMEOUT_SECONDS: { label: "field.bridgeTimeout", type: "number" },
+};
+
+const MODULE_REQUIRED_FIELDS = {
+  image: ["IMAGE_API_BASE_URL", "IMAGE_API_MODEL", "IMAGE_API_KEY"],
+  localimage: [
+    "LOCAL_IMAGE_COMFYUI_BASE_URL",
+    "LOCAL_IMAGE_COMFYUI_ALLOWED_HOST",
+    "LOCAL_IMAGE_COMFYUI_WORKFLOW_PATH",
+    "LOCAL_IMAGE_DEFAULT_SIZE",
+    "LOCAL_IMAGE_DEFAULT_QUALITY",
+    "LOCAL_IMAGE_DEFAULT_STYLE",
+    "LOCAL_IMAGE_DEFAULT_OUTPUT_FORMAT",
+  ],
+  tts: ["TTS_LOCAL_HTTP_URL"],
+  matrix: ["MATRIX_HOMESERVER"],
+  printer: ["PRINTER_BRIDGE_URL", "PRINTER_ALLOWED_PRINTERS"],
 };
 
 const STRINGS = {
@@ -103,10 +120,13 @@ const STRINGS = {
     statusLoaded: "状态已载入。",
     loadFailed: "无法载入状态：{message}",
     fillRequired: "请先补齐带 * 的必填项。",
+    requiredMissing: "当前有必填项未填写，请填写相关配置后再尝试。",
+    savedWithDisabledModules: "当前有必填项未填写，已保存当前内容，但未开启配置不完整的模块。",
     saved: "已保存 WebUI 配置。模块注册和 agent 变更需要重启服务后完全生效。",
     agentNamePrompt: "请输入 agent 名称，只能包含字母、数字、下划线和连字符。",
     agentNameInvalid: "agent 名称只能包含字母、数字、下划线和连字符。",
     sharedArtifactRead: "共享 artifact 读取",
+    agentEnabled: "启用 agent",
     highRiskTools: "High-risk tools",
     remove: "删除",
     addAgentTitle: "添加 agent",
@@ -182,6 +202,7 @@ const STRINGS = {
       maxCopies: "最大份数",
       maxFileBytes: "最大文件字节",
       bridgeTimeout: "Bridge 超时秒数",
+      allowedPrinters: "允许打印机",
     },
     empty: {
       title: "连接后显示配置",
@@ -207,10 +228,13 @@ const STRINGS = {
     statusLoaded: "Status loaded.",
     loadFailed: "Could not load status: {message}",
     fillRequired: "Please fill the required fields marked with *.",
+    requiredMissing: "Required fields are missing. Fill the related config, then try again.",
+    savedWithDisabledModules: "Required fields are missing. Saved the current values, but left incomplete modules disabled.",
     saved: "Saved WebUI config. Restart the service for module registration and agent changes to fully apply.",
     agentNamePrompt: "Enter an agent name. Use only letters, numbers, underscores, and hyphens.",
     agentNameInvalid: "Agent names may contain only letters, numbers, underscores, and hyphens.",
     sharedArtifactRead: "Shared artifact read",
+    agentEnabled: "Enable agent",
     highRiskTools: "High-risk tools",
     remove: "Remove",
     addAgentTitle: "Add agent",
@@ -286,6 +310,7 @@ const STRINGS = {
       maxCopies: "Max copies",
       maxFileBytes: "Max file bytes",
       bridgeTimeout: "Bridge timeout seconds",
+      allowedPrinters: "Allowed printers",
     },
     empty: {
       title: "Connect To Show Config",
@@ -326,7 +351,12 @@ function moduleText(moduleId) {
 function getValues() {
   const owned = lastStatus?.webui?.owned_fields || {};
   const local = lastStatus?.local_env || {};
-  return { ...local, ...owned };
+  const values = { ...local, ...owned };
+  document.querySelectorAll("#configForm input[name], #configForm textarea[name]").forEach((input) => {
+    if (input.type === "password" && !input.value.trim()) return;
+    values[input.name] = input.type === "checkbox" ? (input.checked ? "true" : "false") : input.value.trim();
+  });
+  return values;
 }
 
 function getValue(name) {
@@ -457,6 +487,7 @@ function renderPage() {
   if (currentPage === "printer") renderModulePage(mount, "printer", [
     "PRINTER_BRIDGE_URL",
     "PRINTER_BRIDGE_API_KEY",
+    "PRINTER_ALLOWED_PRINTERS",
     "PRINTER_MAX_COPIES",
     "PRINTER_MAX_FILE_BYTES",
     "PRINTER_BRIDGE_TIMEOUT_SECONDS",
@@ -565,7 +596,7 @@ function renderLocalImagePage(mount) {
       <div class="subsection">
         <h3>${t("localimage.modelFields", { workflow: workflowLabel(selected, workflow) })}</h3>
         <div class="form-grid">
-          ${workflow.fields.map((name) => field(name, { required: moduleEnabled("localimage") && selected !== "custom" })).join("")}
+          ${workflow.fields.map((name) => field(name, { required: selected !== "custom", enforceRequired: moduleEnabled("localimage") && selected !== "custom" })).join("")}
         </div>
       </div>
       <details class="advanced">
@@ -583,26 +614,36 @@ function renderMatrixPage(mount) {
   const active = draftAgents.find((agent) => agent.name === activeAgent) || draftAgents[0] || null;
   if (active && active.name !== activeAgent) activeAgent = active.name;
   mount.innerHTML = `
-    <section class="panel">
-      <div class="panel-heading">
-        <div>
-          <h2>Matrix</h2>
-          <p>${t("matrix.desc")}</p>
+    <section class="matrix-layout">
+      <article class="panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Matrix</h2>
+            <p>${moduleEnabled("matrix") ? t("module.enabledDesc") : t("module.disabledDesc")}</p>
+          </div>
+          ${moduleToggle("matrix")}
         </div>
-        ${moduleToggle("matrix")}
-      </div>
-      <div class="form-grid compact">
-        ${field("MATRIX_HOMESERVER")}
-        ${field("MATRIX_TIMEOUT_SECONDS")}
-        ${field("MATRIX_MAX_TEXT_CHARS")}
-      </div>
-      <div class="agent-bar">
-        ${draftAgents.map((agent) => `<button type="button" class="agent-tab ${agent.name === activeAgent ? "active" : ""}" data-agent="${escapeHtml(agent.name)}">${escapeHtml(agent.name)}</button>`).join("")}
-        <button type="button" id="addAgent" class="agent-add" title="${t("addAgentTitle")}">+</button>
-      </div>
-      <div id="agentPanel">
-        ${active ? agentPanel(active) : emptyState(t("noAgentTitle"), t("noAgentBody"))}
-      </div>
+        <div class="form-grid single">
+          ${field("MATRIX_HOMESERVER")}
+          ${field("MATRIX_TIMEOUT_SECONDS")}
+          ${field("MATRIX_MAX_TEXT_CHARS")}
+        </div>
+      </article>
+      <article class="panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Agent</h2>
+            <p>${t("matrix.desc")}</p>
+          </div>
+          <button type="button" id="addAgent" class="agent-add" title="${t("addAgentTitle")}">+</button>
+        </div>
+        <div class="agent-bar">
+          ${draftAgents.map((agent) => `<button type="button" class="agent-tab ${agent.name === activeAgent ? "active" : ""} ${agent.enabled ? "enabled" : ""}" data-agent="${escapeHtml(agent.name)}">${escapeHtml(agent.name)}</button>`).join("")}
+        </div>
+        <div id="agentPanel">
+          ${active ? agentPanel(active) : emptyState(t("noAgentTitle"), t("noAgentBody"))}
+        </div>
+      </article>
     </section>
     ${actionBar(t("matrix.save"))}
   `;
@@ -611,11 +652,12 @@ function renderMatrixPage(mount) {
 function moduleSwitchCard(moduleId) {
   const enabled = moduleEnabled(moduleId);
   const missing = requiredMissing(moduleId);
+  const status = missing.length ? t("module.missing", { count: missing.length }) : (enabled ? t("module.enabledReady") : t("module.disabled"));
   return `
     <div class="module-card ${enabled ? "enabled" : ""}">
       <div>
         <strong>${t(`modules.${moduleId}.label`)}</strong>
-        <span>${enabled ? (missing.length ? t("module.missing", { count: missing.length }) : t("module.enabledReady")) : t("module.disabled")}</span>
+        <span>${status}</span>
       </div>
       ${moduleToggle(moduleId)}
     </div>
@@ -634,20 +676,28 @@ function moduleToggle(moduleId) {
 function field(name, options = {}) {
   const meta = FIELD_META[name] || { label: name };
   const label = meta.label?.startsWith("field.") ? t(meta.label) : meta.label || name;
-  const required = options.required ?? (meta.requiredWhen ? moduleEnabled(meta.requiredWhen) : false);
+  const visuallyRequired = options.required ?? !!meta.requiredWhen;
+  const enforceRequired = options.enforceRequired ?? (meta.requiredWhen ? moduleEnabled(meta.requiredWhen) : visuallyRequired);
   const value = getValue(name);
   const secretValue = meta.secret && value;
   const inputType = meta.secret ? "password" : meta.type || "text";
-  return `
-    <label class="field ${required ? "required" : ""}">
-      <span>${label}${required ? " <b>*</b>" : ""}</span>
-      <input
+  const control = meta.multiline
+    ? `<textarea
+        name="${name}"
+        ${enforceRequired ? "required" : ""}
+        placeholder="${escapeAttr(meta.placeholder || "")}"
+      >${escapeHtml(value)}</textarea>`
+    : `<input
         name="${name}"
         type="${inputType}"
-        ${required ? "required" : ""}
+        ${enforceRequired ? "required" : ""}
         value="${secretValue ? "" : escapeAttr(value)}"
         placeholder="${secretValue ? t("configuredReplace") : escapeAttr(meta.placeholder || "")}"
-      />
+      />`;
+  return `
+    <label class="field ${visuallyRequired ? "required" : ""}">
+      <span>${label}${visuallyRequired ? " <b>*</b>" : ""}</span>
+      ${control}
       <small>${name}</small>
     </label>
   `;
@@ -664,9 +714,13 @@ function agentPanel(agent) {
         <button type="button" class="secondary danger" id="removeAgent">${t("remove")}</button>
       </div>
       <div class="form-grid">
-        ${agentField("Gateway Token", "caller.gateway_token", agent.caller.gateway_token_configured, true)}
-        ${agentField("Matrix Access Token", "matrix.access_token", agent.matrix.access_token_configured, true)}
-        ${agentTextField("Matrix Account", "matrix.account", agent.matrix.account || agent.name, true)}
+        <label class="field inline-check">
+          <span>${t("agentEnabled")}</span>
+          <input type="checkbox" data-agent-field="enabled" ${agent.enabled ? "checked" : ""} />
+        </label>
+        ${agentField("Gateway Token", "caller.gateway_token", agent.caller.gateway_token_configured, true, agent.enabled)}
+        ${agentField("Matrix Access Token", "matrix.access_token", agent.matrix.access_token_configured, true, agent.enabled)}
+        ${agentTextField("Matrix Account", "matrix.account", agent.matrix.account || agent.name, true, agent.enabled)}
         <label class="field inline-check">
           <span>${t("sharedArtifactRead")}</span>
           <input type="checkbox" data-agent-field="caller.shared_artifact_read" ${agent.caller.shared_artifact_read ? "checked" : ""} />
@@ -685,21 +739,21 @@ function agentPanel(agent) {
   `;
 }
 
-function agentField(label, path, configured, required) {
+function agentField(label, path, configured, visuallyRequired, enforceRequired = visuallyRequired) {
   return `
-    <label class="field ${required && !configured ? "required" : ""}">
-      <span>${label}${required ? " <b>*</b>" : ""}</span>
-      <input type="password" data-agent-field="${path}" placeholder="${configured ? t("configuredReplace") : t("required")}" ${required && !configured ? "required" : ""} />
+    <label class="field ${visuallyRequired ? "required" : ""}">
+      <span>${label}${visuallyRequired ? " <b>*</b>" : ""}</span>
+      <input type="password" data-agent-field="${path}" placeholder="${configured ? t("configuredReplace") : t("required")}" ${enforceRequired && !configured ? "required" : ""} />
       <small>${configured ? t("configured") : t("notConfigured")}</small>
     </label>
   `;
 }
 
-function agentTextField(label, path, value, required) {
+function agentTextField(label, path, value, visuallyRequired, enforceRequired = visuallyRequired) {
   return `
-    <label class="field ${required ? "required" : ""}">
-      <span>${label}${required ? " <b>*</b>" : ""}</span>
-      <input type="text" data-agent-field="${path}" value="${escapeAttr(value)}" ${required ? "required" : ""} />
+    <label class="field ${visuallyRequired ? "required" : ""}">
+      <span>${label}${visuallyRequired ? " <b>*</b>" : ""}</span>
+      <input type="text" data-agent-field="${path}" value="${escapeAttr(value)}" ${enforceRequired ? "required" : ""} />
     </label>
   `;
 }
@@ -708,7 +762,6 @@ function environmentRows() {
   const env = lastStatus.environment || {};
   const rows = [
     ["Python", env.python?.available, env.python?.output || "-"],
-    ["PowerShell", env.powershell?.available, env.powershell?.output || "-"],
     ["Config main", env.config_main?.exists, env.config_main?.path],
     ["Config user", env.config_user?.exists, env.config_user?.path],
     ["Agent config", env.agent_config_dir?.exists, env.agent_config_dir?.path],
@@ -743,12 +796,20 @@ function actionBar(label) {
 
 function attachDynamicHandlers() {
   $("#reloadDraft")?.addEventListener("click", () => loadStatus(false));
-  document.querySelectorAll("[name]").forEach((input) => {
+  document.querySelectorAll("[name], textarea[name]").forEach((input) => {
     input.addEventListener("input", () => {
       input.classList.toggle("invalid", input.required && !input.value.trim());
     });
     input.addEventListener("change", () => {
       if (Object.values(MODULE_SWITCHES).includes(input.name)) {
+        const moduleId = moduleIdForSwitch(input.name);
+        if (input.checked && moduleId && requiredMissing(moduleId).length) {
+          input.checked = false;
+          updateLocalField(input.name, "false");
+          notifyRequiredMissing();
+          renderAll();
+          return;
+        }
         updateLocalField(input.name, input.checked ? "true" : "false");
         renderAll();
       }
@@ -771,7 +832,19 @@ function attachDynamicHandlers() {
   $("#removeAgent")?.addEventListener("click", removeActiveAgent);
   document.querySelectorAll("[data-agent-field], [data-tool]").forEach((input) => {
     input.addEventListener("input", saveActiveAgentDraft);
-    input.addEventListener("change", saveActiveAgentDraft);
+    input.addEventListener("change", () => {
+      if (input.dataset.agentField === "enabled" && input.checked) {
+        saveActiveAgentDraft();
+        const agent = draftAgents.find((item) => item.name === activeAgent);
+        if (agent && agentMissing(agent).length) {
+          agent.enabled = false;
+          notifyRequiredMissing();
+          renderPage();
+          return;
+        }
+      }
+      saveActiveAgentDraft();
+    });
   });
 }
 
@@ -813,7 +886,7 @@ function addAgent() {
   }
   draftAgents.push({
     name: cleaned,
-    enabled: true,
+    enabled: false,
     has_config: false,
     has_env: false,
     caller: {
@@ -855,14 +928,18 @@ function saveActiveAgentDraft() {
 async function saveConfig(event) {
   event.preventDefault();
   saveActiveAgentDraft();
-  const invalid = Array.from(document.querySelectorAll("input[required]")).filter((input) => !input.value.trim());
+  draftAgents.forEach((agent) => {
+    if (agent.enabled && agentMissing(agent).length) agent.enabled = false;
+  });
+  const invalid = Array.from(document.querySelectorAll("input[required], textarea[required]")).filter((input) => !input.value.trim());
   invalid.forEach((input) => input.classList.add("invalid"));
-  if (invalid.length) {
-    showMessage(t("fillRequired"), "danger");
-    invalid[0].focus();
-    return;
-  }
   const owned = collectOwnedFields();
+  const incompleteEnabled = enabledModulesWithMissingFields(owned, modulesSavedByCurrentPage());
+  incompleteEnabled.forEach((moduleId) => {
+    owned[MODULE_SWITCHES[moduleId]] = "false";
+    updateLocalField(MODULE_SWITCHES[moduleId], "false");
+  });
+  if (invalid.length || incompleteEnabled.length) notifyRequiredMissing();
   const body = { owned_fields: owned };
   if (currentPage === "matrix" || currentPage === "dashboard") {
     body.agents = draftAgents;
@@ -877,13 +954,13 @@ async function saveConfig(event) {
     showMessage(payload.error || response.statusText, "danger");
     return;
   }
-  showMessage(t("saved"), "success");
+  showMessage(invalid.length || incompleteEnabled.length ? t("savedWithDisabledModules") : t("saved"), invalid.length || incompleteEnabled.length ? "warning" : "success");
   await loadStatus(false);
 }
 
 function collectOwnedFields() {
   const owned = { ...(lastStatus?.webui?.owned_fields || {}) };
-  document.querySelectorAll("#configForm input[name]").forEach((input) => {
+  document.querySelectorAll("#configForm input[name], #configForm textarea[name]").forEach((input) => {
     if (input.type === "password" && !input.value.trim()) return;
     owned[input.name] = input.type === "checkbox" ? (input.checked ? "true" : "false") : input.value.trim() || owned[input.name] || "";
   });
@@ -894,11 +971,40 @@ function collectOwnedFields() {
   return owned;
 }
 
-function requiredMissing(moduleId) {
-  return Object.entries(FIELD_META)
-    .filter(([, meta]) => meta.requiredWhen === moduleId)
-    .filter(([name]) => !String(getValue(name) || "").trim())
-    .map(([name]) => name);
+function requiredMissing(moduleId, values = getValues()) {
+  const missing = (MODULE_REQUIRED_FIELDS[moduleId] || []).filter((name) => !String(values[name] || "").trim());
+  if (moduleId === "matrix" && (currentPage === "matrix" || currentPage === "dashboard") && !matrixHasToken()) missing.push("Matrix Access Token");
+  return missing;
+}
+
+function enabledModulesWithMissingFields(values, moduleIds = Object.keys(MODULE_SWITCHES)) {
+  return moduleIds.filter((moduleId) => normalizeBool(values[MODULE_SWITCHES[moduleId]]) && requiredMissing(moduleId, values).length);
+}
+
+function modulesSavedByCurrentPage() {
+  if (currentPage === "dashboard") return Object.keys(MODULE_SWITCHES);
+  return MODULE_SWITCHES[currentPage] ? [currentPage] : [];
+}
+
+function moduleIdForSwitch(name) {
+  return Object.entries(MODULE_SWITCHES).find(([, envName]) => envName === name)?.[0] || null;
+}
+
+function matrixHasToken() {
+  return draftAgents.some((agent) => agent.enabled && (agent.matrix.access_token_configured || String(agent.matrix.access_token || "").trim()));
+}
+
+function agentMissing(agent) {
+  const missing = [];
+  if (!agent.caller.gateway_token_configured && !String(agent.caller.gateway_token || "").trim()) missing.push("Gateway Token");
+  if (!agent.matrix.access_token_configured && !String(agent.matrix.access_token || "").trim()) missing.push("Matrix Access Token");
+  if (!String(agent.matrix.account || "").trim()) missing.push("Matrix Account");
+  return missing;
+}
+
+function notifyRequiredMissing() {
+  showMessage(t("requiredMissing"), "danger");
+  window.alert(t("requiredMissing"));
 }
 
 function normalizeAgents(agents) {
