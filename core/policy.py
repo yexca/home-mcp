@@ -59,6 +59,15 @@ class PolicyEngine:
                 role=spec.get("role", "role_play"),
                 shared_artifact_read=bool(spec.get("shared_artifact_read", False)),
             )
+        # Temporary auth bypass: requests without an Authorization header act as the configured caller.
+        fallback_caller = self.settings.policy.get("unauthenticated_caller")
+        if not authorization and fallback_caller in self.settings.callers:
+            spec = self.settings.callers[fallback_caller]
+            return CallerIdentity(
+                caller_id=fallback_caller,
+                role=spec.get("role", "role_play"),
+                shared_artifact_read=bool(spec.get("shared_artifact_read", False)),
+            )
         return CallerIdentity("anonymous", role="anonymous", shared_artifact_read=False)
 
     def evaluate(

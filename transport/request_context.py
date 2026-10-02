@@ -9,6 +9,8 @@ from core.audit import AuditLogger
 from core.jobs import JobManager
 from core.limits import InMemoryRateLimiter
 from core.policy import CallerIdentity, PolicyEngine
+from core.management import ManagementStore
+from core.llm import LLMStore
 
 
 @dataclass(slots=True)
@@ -19,8 +21,12 @@ class CoreServices:
     policy: PolicyEngine
     audit: AuditLogger
     limits: InMemoryRateLimiter
+    management: ManagementStore | None = None
+    llm: LLMStore | None = None
 
     def close(self) -> None:
+        if self.management is not None:
+            self.management.conn.close()
         self.artifacts.conn.close()
 
     def __del__(self) -> None:

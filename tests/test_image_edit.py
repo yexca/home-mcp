@@ -222,6 +222,7 @@ class EditProviderHTTPRequestHandler(BaseHTTPRequestHandler):
     content_type = ""
     request_path = ""
     auth_header = ""
+    user_agent = ""
 
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
@@ -229,6 +230,7 @@ class EditProviderHTTPRequestHandler(BaseHTTPRequestHandler):
         type(self).content_type = self.headers.get("Content-Type", "")
         type(self).request_path = self.path
         type(self).auth_header = self.headers.get("Authorization", "")
+        type(self).user_agent = self.headers.get("User-Agent", "")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
@@ -277,6 +279,7 @@ class OpenAICompatibleEditProviderTests(unittest.TestCase):
         self.assertEqual(EditProviderHTTPRequestHandler.request_path, "/v1/images/edits")
         self.assertIn("multipart/form-data", EditProviderHTTPRequestHandler.content_type)
         self.assertEqual(EditProviderHTTPRequestHandler.auth_header, "Bearer test-image-api-key")
+        self.assertEqual(EditProviderHTTPRequestHandler.user_agent, "home-mcp-gateway/0.2.2")
         body = EditProviderHTTPRequestHandler.request_body
         self.assertEqual(body.count(b'name="image[]"'), 2)
         self.assertIn(b'name="model"', body)

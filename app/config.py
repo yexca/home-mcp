@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import re
+import json
+import sqlite3
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +51,13 @@ class Settings:
     def modules(self) -> dict[str, Any]:
         return self.raw.get("modules", {})
 
+    @property
+    def webui(self) -> dict[str, Any]:
+        return {
+            "login_key": os.getenv("HOME_MCP_LOGIN_KEY", ""),
+            "dev_mode": os.getenv("HOME_MCP_DEV_MODE", "false").strip().lower() in {"1", "true", "yes", "on"},
+        }
+
     def enabled_modules(self) -> dict[str, Any]:
         return {
             name: {"enabled": bool(spec.get("enabled", False)), "provider": spec.get("provider")}
@@ -58,12 +67,35 @@ class Settings:
 
 def load_settings(config_path: str | None = None) -> Settings:
     data = _load_config_with_defaults(config_path)
+    database = _substitute_env(data["database"], os.environ)
+    data["database"] = database
+    persisted = _read_management_config(data)
+    if persisted is not None:
+        data = _deep_fill_defaults(persisted, data)
+        # The bootstrap chooses the database, including when restoring a backup to a new path.
+        data["database"] = database
     module_enabled_overrides = _module_enabled_values(_explicit_config_data(config_path))
+    if persisted is not None:
+        module_enabled_overrides = _module_enabled_values(persisted)
     _apply_agent_config_fragments(data)
     _restore_module_enabled_values(data, module_enabled_overrides)
     data = _substitute_env(data, os.environ)
     _validate(data)
     return Settings(data)
+
+
+def _read_management_config(data: dict[str, Any]) -> dict[str, Any] | None:
+    path = Path(str(data.get("database", {}).get("path", "")))
+    if not path.is_file():
+        return None
+    conn = sqlite3.connect(path)
+    try:
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'management_config'").fetchone():
+            return None
+        row = conn.execute("SELECT config_json FROM management_config WHERE id = 1").fetchone()
+        return json.loads(row[0]) if row else None
+    finally:
+        conn.close()
 
 
 def _explicit_config_data(config_path: str | None = None) -> dict[str, Any]:
@@ -130,10 +162,24 @@ def _apply_agent_config_fragments(data: dict[str, Any]) -> None:
     config_dir = Path(str(data.get("agents", {}).get("config_dir", "config/agent")))
     _prune_disabled_agent_config(data, _configured_agent_names(data) | (_discover_agent_fragment_names(config_dir) - enabled_set))
     for agent_name in enabled_agents:
+        stored = data.get("_agent_fragments", {})
+        if agent_name in stored:
+            _merge_agent_fragment(data, agent_name, stored[agent_name])
+            continue
         fragment_path = config_dir / f"config.agent.{agent_name}.yaml"
         if not fragment_path.is_file():
             raise ValueError(f"missing enabled agent config: {fragment_path}")
-        _merge_agent_fragment(data, agent_name, _load_yaml(fragment_path))
+        fragment = _load_yaml(fragment_path)
+        data.setdefault("_agent_fragments", {})[agent_name] = fragment
+        _merge_agent_fragment(data, agent_name, fragment)
+    # Retain disabled agents for management after the one-time YAML import.
+    if "_agent_fragments" not in data:
+        data["_agent_fragments"] = {}
+    if config_dir.is_dir():
+        for path in config_dir.glob("config.agent.*.yaml"):
+            name = path.name.removeprefix("config.agent.").removesuffix(".yaml")
+            if name not in data["_agent_fragments"] and not data.get("_sqlite_managed"):
+                data["_agent_fragments"][name] = _load_yaml(path)
 
 
 def _enabled_agents(data: dict[str, Any]) -> tuple[bool, tuple[str, ...]]:
@@ -356,10 +402,10 @@ def _validate_image_config(image_config: dict[str, Any]) -> None:
     if image_config.get("provider") != "openai_compatible":
         raise ValueError("modules.image.provider must be openai_compatible")
     provider_config = image_config.get("openai_compatible", {})
-    for key in ("base_url", "model", "api_key"):
+    for key in (() if image_config.get("model_id") else ("base_url", "model", "api_key")):
         if not provider_config.get(key):
             raise ValueError(f"missing required image provider setting: {key}")
-    parsed_base_url = urlparse(str(provider_config["base_url"]))
+    parsed_base_url = urlparse(str(provider_config.get("base_url", "")))
     if parsed_base_url.path.rstrip("/").endswith("/v1/images"):
         raise ValueError("modules.image.openai_compatible.base_url must be the API root, not a /v1/images endpoint path")
     allowed_sizes = image_config.get("allowed_sizes") or []

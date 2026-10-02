@@ -52,6 +52,8 @@ callers:
 
 policy:
   default_allow: false
+  # Optional caller id used for requests without an Authorization header (disables tool auth).
+  # unauthenticated_caller: host_assistant
   anonymous_allowed_tools:
     - health_check
   high_risk_allowed_callers:

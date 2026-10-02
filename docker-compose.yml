@@ -5,6 +5,9 @@ services:
       dockerfile: Dockerfile
     image: yexca/home-mcp-gateway:0.2.2
     container_name: home-mcp-gateway
+    environment:
+      HOME_MCP_LOGIN_KEY: ${HOME_MCP_LOGIN_KEY:-}
+      HOME_MCP_DEV_MODE: ${HOME_MCP_DEV_MODE:-false}
     ports:
       - "8787:8787"
     volumes:

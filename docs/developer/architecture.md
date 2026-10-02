@@ -11,7 +11,7 @@ keeps external provider details behind module adapters.
 | Application | `app/` | Load settings, open SQLite, build core services, register tools, start HTTP server. |
 | Transport | `transport/` | Serve `/`, `/webui/`, `/admin/api/*`, `/healthz`, `/readyz`, `/mcp`, `/mcp/messages`, and `/artifacts/{id}`. |
 | Tool system | `tools/` | Register tool definitions, validate input schemas, dispatch handlers, normalize success/failure results. |
-| Core services | `core/` | Artifacts, jobs, audit events, caller policy, rate limits, database migrations, stable errors. |
+| Core services | `core/` | Artifacts, jobs, audit events, caller policy, rate limits, management settings, LLM catalog, database migrations, stable errors. |
 | Modules | `modules/` | Domain logic and tool registration for optional capabilities. |
 | Providers | `modules/*/providers/` | HTTP adapters for external image, TTS, Matrix, and printer services. |
 
@@ -19,7 +19,7 @@ keeps external provider details behind module adapters.
 
 1. `app.main.build_services()` loads settings with `app.config.load_settings()`.
 2. SQLite is opened through `core.db.connect_database()`, which applies schema migrations.
-3. `CoreServices` is assembled with artifact, job, policy, audit, and rate-limit services.
+3. Management settings and agents are imported from legacy YAML once. The LLM catalog imports a legacy remote image model and resolves selected image provider credentials. `CoreServices` is assembled with artifact, job, policy, audit, rate-limit, management and LLM services.
 4. Built-in tools are registered through `tools.builtin.register_builtin_tools()`.
 5. Enabled module manifests are discovered by `modules.loader.register_configured_module_tools()`.
 6. Enabled module startup hooks are run through `modules.loader.run_configured_module_startup_hooks()`.
@@ -65,7 +65,10 @@ The gateway supports three call shapes:
   - `GET /` redirects to `/webui/`.
   - `GET /webui/` serves the static local configuration UI.
   - `GET /admin/api/status` returns admin-only runtime, configuration, and environment status.
-  - `POST /admin/api/config` saves configuration fields to `config/config.yaml` and `config/agent/*.yaml`.
+  - `GET /admin/api/auth` exposes management login/dev mode availability.
+  - `POST /admin/api/config` saves configuration fields and agents to SQLite.
+  - `GET /admin/api/llm` lists configured providers/models without API keys.
+  - `POST /admin/api/llm/providers/save`, `/providers/delete`, `/discover` and `/models/save` manage providers, fetch remote models and save selected models/tags.
 - HTTP health/readiness:
   - `GET /healthz`
   - `GET /readyz`

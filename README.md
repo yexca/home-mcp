@@ -2,7 +2,7 @@
 
 `home_mcp_gateway` is a local HTTP/SSE MCP gateway for ZeroClaw and other MCP clients. It centralizes tool calls, policy checks, artifact storage, jobs, and audit records behind one local MCP endpoint.
 
-Normal users edit YAML under `config/`. The committed `config/config.main.yaml` is the application baseline, and the ignored `config/config.yaml` is your local runtime config.
+Manage settings, agents and LLM providers/models in the WebUI. Management data is stored in SQLite (default: `artifacts/metadata.sqlite3`). The first startup imports existing YAML and remote image settings; YAML remains the bootstrap configuration source.
 
 ## Quick Start
 
@@ -16,10 +16,13 @@ Edit `config/config.yaml` and set at least `callers.host_assistant.token`, `call
 Build and run with Docker Compose:
 
 ```powershell
+$env:HOME_MCP_LOGIN_KEY = "your-login-key"
 docker compose up -d --build
 ```
 
 The default endpoint is `http://127.0.0.1:8787`.
+
+Log in to the WebUI with `HOME_MCP_LOGIN_KEY`, independent of MCP caller tokens. Compose also accepts this variable from `.env`. In LLM Management, configure an OpenAI-compatible provider URL and API key, fetch models, select models to add, and assign `text` / `image` tags. URLs with `/v1` are accepted. Remote Image selects an added model tagged `image`.
 
 Check health:
 
@@ -54,14 +57,17 @@ deferred_loading = true
 
 ```powershell
 python -m pip install -e .
+$env:HOME_MCP_DEV_MODE = "true"
 python -m app.main
 ```
+
+`HOME_MCP_DEV_MODE=true` opens management without login. MCP caller authentication and policy still apply. Use `HOME_MCP_LOGIN_KEY` with dev mode off for normal operation. Module switches and agent changes require a restart; switching an existing remote image tool's selected model takes effect immediately.
 
 The default path is Docker Compose. Use local Python runs for development only.
 
 ## Agents
 
-Manage agents in the WebUI or edit `config/config.yaml` and `config/agent/config.agent.<name>.yaml` directly.
+Manage agents in the WebUI; caller and Matrix tokens are saved to SQLite. After migration, YAML edits do not override saved management data. Back up the database together with artifacts.
 
 ## Tests
 

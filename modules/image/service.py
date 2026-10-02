@@ -258,12 +258,11 @@ def _persist_image_outputs(
 def download_image_url(url: str, image_config: dict[str, Any]) -> DownloadedImage:
     parsed = urlparse(url)
     provider_config = image_config.get("openai_compatible", {})
-    allowed_hosts = set(provider_config.get("allowed_image_url_hosts") or [])
     allow_http = bool(image_config.get("allow_http_image_urls", False))
     if parsed.scheme != "https" and not (allow_http and parsed.scheme == "http"):
         raise GatewayError(PROVIDER_UNAVAILABLE, "provider image URL scheme is not allowed", retryable=False)
-    if not parsed.hostname or parsed.hostname not in allowed_hosts:
-        raise GatewayError(PROVIDER_UNAVAILABLE, "provider image URL host is not allowed", retryable=False)
+    if not parsed.hostname:
+        raise GatewayError(PROVIDER_UNAVAILABLE, "provider image URL has no host", retryable=False)
 
     logger.info("provider image URL download started", extra={"source_host": parsed.hostname})
     max_bytes = int(image_config.get("max_download_bytes", 10 * 1024 * 1024))

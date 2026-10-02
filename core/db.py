@@ -5,7 +5,7 @@ from pathlib import Path
 
 from core.time import utc_now_iso
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 MIGRATIONS: list[tuple[int, str, str]] = [
     (
@@ -91,6 +91,30 @@ MIGRATIONS: list[tuple[int, str, str]] = [
           expires_at TEXT,
           PRIMARY KEY (artifact_id, caller_id, permission),
           FOREIGN KEY (artifact_id) REFERENCES artifacts(id)
+        );
+        """,
+    ),
+    (
+        2,
+        "management_and_llm",
+        """
+        CREATE TABLE IF NOT EXISTS management_config (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          config_json TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS llm_providers (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          base_url TEXT NOT NULL,
+          api_key TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS llm_models (
+          id TEXT PRIMARY KEY,
+          provider_id TEXT NOT NULL REFERENCES llm_providers(id) ON DELETE CASCADE,
+          model_id TEXT NOT NULL,
+          tags_json TEXT NOT NULL DEFAULT '[]',
+          UNIQUE(provider_id, model_id)
         );
         """,
     ),

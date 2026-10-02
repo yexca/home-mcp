@@ -1,4 +1,4 @@
-const MODULE_IDS = ["dashboard", "image", "localimage", "tts", "matrix", "printer"];
+const MODULE_IDS = ["dashboard", "llm", "image", "localimage", "tts", "matrix", "printer"];
 
 const MODULE_SWITCHES = {
   image: "IMAGE_MODULE_ENABLED",
@@ -45,9 +45,7 @@ const WORKFLOWS = {
 };
 
 const FIELD_META = {
-  IMAGE_API_BASE_URL: { label: "field.apiBaseUrl", requiredWhen: "image", placeholder: "https://api.example.com" },
-  IMAGE_API_MODEL: { label: "field.model", requiredWhen: "image" },
-  IMAGE_API_KEY: { label: "field.apiKey", requiredWhen: "image", secret: true },
+  IMAGE_MODEL_ID: { label: "field.model", requiredWhen: "image" },
   IMAGE_TOTAL_TIMEOUT_SECONDS: { label: "field.totalTimeout", type: "number" },
   IMAGE_PROVIDER_TIMEOUT_SECONDS: { label: "field.providerTimeout", type: "number" },
   IMAGE_MAX_DOWNLOAD_BYTES: { label: "field.maxDownloadBytes", type: "number" },
@@ -85,7 +83,7 @@ const FIELD_META = {
 };
 
 const MODULE_REQUIRED_FIELDS = {
-  image: ["IMAGE_API_BASE_URL", "IMAGE_API_MODEL", "IMAGE_API_KEY"],
+  image: ["IMAGE_MODEL_ID"],
   localimage: [
     "LOCAL_IMAGE_COMFYUI_BASE_URL",
     "LOCAL_IMAGE_COMFYUI_ALLOWED_HOST",
@@ -106,8 +104,8 @@ const STRINGS = {
     connected: "已连接",
     disconnected: "未连接",
     connect: "连接",
-    adminToken: "Admin Token",
-    adminTokenPlaceholder: "config/config.yaml 中 host_assistant.token 的值",
+    adminToken: "登录密钥",
+    adminTokenPlaceholder: "HOME_MCP_LOGIN_KEY 环境变量配置的密钥",
     footerHint: "保存后如模块开关变化，需要重启服务重新注册工具。",
     themeSystem: "跟随系统",
     themeLight: "日间",
@@ -138,6 +136,7 @@ const STRINGS = {
     noAgentBody: "点击上方 + 输入名称后创建 Matrix agent 配置。",
     modules: {
       dashboard: { label: "Dashboard", title: "控制台", kicker: "Overview" },
+      llm: { label: "LLM 管理", title: "模型管理", kicker: "Providers & Models" },
       image: { label: "远程生图", title: "远程生图配置", kicker: "OpenAI-compatible" },
       localimage: { label: "本地生图", title: "本地生图配置", kicker: "ComfyUI" },
       tts: { label: "TTS", title: "TTS 配置", kicker: "Audio" },
@@ -206,7 +205,7 @@ const STRINGS = {
     },
     empty: {
       title: "连接后显示配置",
-      body: "输入 Admin Token 后载入当前运行状态和本地配置。",
+      body: "输入环境变量配置的登录密钥后进入管理界面。",
     },
   },
   en: {
@@ -214,8 +213,8 @@ const STRINGS = {
     connected: "Connected",
     disconnected: "Disconnected",
     connect: "Connect",
-    adminToken: "Admin Token",
-    adminTokenPlaceholder: "Value of callers.host_assistant.token in config/config.yaml",
+    adminToken: "Login key",
+    adminTokenPlaceholder: "Key configured in HOME_MCP_LOGIN_KEY",
     footerHint: "Restart the service after module switch changes so tools can be registered again.",
     themeSystem: "System",
     themeLight: "Light",
@@ -246,6 +245,7 @@ const STRINGS = {
     noAgentBody: "Click + above, enter a name, then create a Matrix agent config.",
     modules: {
       dashboard: { label: "Dashboard", title: "Dashboard", kicker: "Overview" },
+      llm: { label: "LLM Management", title: "Model Management", kicker: "Providers & Models" },
       image: { label: "Remote Image", title: "Remote Image Config", kicker: "OpenAI-compatible" },
       localimage: { label: "Local Image", title: "Local Image Config", kicker: "ComfyUI" },
       tts: { label: "TTS", title: "TTS Config", kicker: "Audio" },
@@ -314,7 +314,7 @@ const STRINGS = {
     },
     empty: {
       title: "Connect To Show Config",
-      body: "Enter the Admin Token to load runtime status and local config.",
+      body: "Enter the login key configured in the environment to open management.",
     },
   },
 };
@@ -323,6 +323,13 @@ let lastStatus = null;
 let currentPage = "dashboard";
 let draftAgents = [];
 let activeAgent = null;
+let activeProvider = null;
+let modelDrafts = {};
+let llmBusy = false;
+
+function llmText(zh, en) {
+  return language() === "zh-CN" ? zh : en;
+}
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -352,7 +359,7 @@ function getValues() {
   const owned = lastStatus?.webui?.owned_fields || {};
   const local = lastStatus?.local_env || {};
   const values = { ...local, ...owned };
-  document.querySelectorAll("#configForm input[name], #configForm textarea[name]").forEach((input) => {
+  document.querySelectorAll("#configForm input[name], #configForm textarea[name], #configForm select[name]").forEach((input) => {
     if (input.type === "password" && !input.value.trim()) return;
     values[input.name] = input.type === "checkbox" ? (input.checked ? "true" : "false") : input.value.trim();
   });
@@ -369,7 +376,8 @@ function moduleEnabled(moduleId) {
 }
 
 function init() {
-  $("#adminToken").value = localStorage.getItem("webui.adminToken") || "";
+  localStorage.removeItem("webui.adminToken");
+  $("#adminToken").value = sessionStorage.getItem("webui.loginKey") || "";
   $("#loadStatus").addEventListener("click", () => loadStatus());
   $("#configForm").addEventListener("submit", saveConfig);
   $("#themeSelect").addEventListener("change", (event) => {
@@ -387,7 +395,27 @@ function init() {
   renderNav();
   routeTo(location.hash.replace("#", "") || "dashboard");
   window.addEventListener("hashchange", () => routeTo(location.hash.replace("#", "") || "dashboard"));
-  if ($("#adminToken").value) loadStatus(false);
+  $("#logout").addEventListener("click", () => {
+    sessionStorage.removeItem("webui.loginKey");
+    $("#adminToken").value = "";
+    lastStatus = null;
+    modelDrafts = {};
+    $("#authPanel").hidden = false;
+    $("#logout").hidden = true;
+    renderAll();
+  });
+  initializeAuth();
+}
+
+async function initializeAuth() {
+  try {
+    const response = await fetch("/admin/api/auth");
+    const auth = await response.json();
+    if (auth.dev_mode || $("#adminToken").value) await loadStatus(false);
+    if (!auth.dev_mode && !auth.login_configured) showMessage(llmText("请设置 HOME_MCP_LOGIN_KEY，或通过 HOME_MCP_DEV_MODE=true 启用开发模式。", "Set HOME_MCP_LOGIN_KEY, or enable development mode with HOME_MCP_DEV_MODE=true."), "warning");
+  } catch (error) {
+    showMessage(error.message, "danger");
+  }
 }
 
 function applyStaticI18n() {
@@ -411,6 +439,10 @@ async function loadStatus(showSuccess = true) {
     const payload = await response.json();
     if (!response.ok || !payload.ok) throw new Error(payload.error || response.statusText);
     lastStatus = payload;
+    if (!payload.dev_mode) sessionStorage.setItem("webui.loginKey", $("#adminToken").value);
+    $("#authPanel").hidden = true;
+    $("#logout").hidden = !!payload.dev_mode;
+    $("#logout").textContent = llmText("退出登录", "Log out");
     draftAgents = normalizeAgents(payload.agents || []);
     activeAgent = draftAgents[0]?.name || null;
     renderAll();
@@ -421,8 +453,7 @@ async function loadStatus(showSuccess = true) {
 }
 
 function authHeaders() {
-  const token = $("#adminToken").value.trim() || localStorage.getItem("webui.adminToken") || "";
-  if (token) localStorage.setItem("webui.adminToken", token);
+  const token = $("#adminToken").value.trim() || sessionStorage.getItem("webui.loginKey") || "";
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
@@ -455,6 +486,10 @@ function updateHeader() {
   const badge = $("#runtimeBadge");
   badge.textContent = lastStatus ? t("connected") : t("disconnected");
   badge.className = `status-pill ${lastStatus ? "success" : "muted"}`;
+  if (lastStatus?.restart_required) {
+    badge.textContent = llmText("需重启服务", "Restart required");
+    badge.className = "status-pill warning";
+  }
 }
 
 function updateFooter() {
@@ -468,10 +503,9 @@ function renderPage() {
     return;
   }
   if (currentPage === "dashboard") renderDashboard(mount);
+  if (currentPage === "llm") renderLLMPage(mount);
   if (currentPage === "image") renderModulePage(mount, "image", [
-    "IMAGE_API_BASE_URL",
-    "IMAGE_API_MODEL",
-    "IMAGE_API_KEY",
+    "IMAGE_MODEL_ID",
     "IMAGE_TOTAL_TIMEOUT_SECONDS",
     "IMAGE_PROVIDER_TIMEOUT_SECONDS",
     "IMAGE_MAX_DOWNLOAD_BYTES",
@@ -559,6 +593,134 @@ function renderModulePage(mount, moduleId, fields) {
     </section>
     ${actionBar(t("module.save"))}
   `;
+}
+
+function renderLLMPage(mount) {
+  const providers = lastStatus.llm?.providers || [];
+  if (activeProvider === null) activeProvider = providers[0]?.id || "";
+  const provider = providers.find((item) => item.id === activeProvider);
+  if (provider && !modelDrafts[provider.id]) {
+    modelDrafts[provider.id] = provider.models.map((model) => ({ ...model, tags: [...model.tags], added: true }));
+  }
+  const models = modelDrafts[activeProvider] || [];
+  const busy = llmBusy ? "disabled" : "";
+  mount.innerHTML = `
+    <section class="panel llm-panel">
+      <div class="panel-heading"><div><h2>${llmText("服务商", "Providers")}</h2>
+        <p>${llmText("配置 OpenAI 兼容地址和密钥，然后获取模型列表。", "Configure an OpenAI-compatible address and API key, then fetch models.")}</p></div>
+        <button type="button" id="newProvider" ${busy}>+ ${llmText("新增", "New")}</button></div>
+      <label class="field"><span>${llmText("选择服务商", "Select provider")}</span><select id="providerSelect" ${busy}>
+        <option value="">${llmText("新增服务商", "New provider")}</option>
+        ${providers.map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === activeProvider ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
+      </select></label>
+      <div class="form-grid provider-fields">
+        <label class="field"><span>${llmText("名称", "Name")} *</span><input id="providerName" value="${escapeAttr(provider?.name || "")}" ${busy} /></label>
+        <label class="field"><span>API Base URL *</span><input id="providerUrl" value="${escapeAttr(provider?.base_url || "")}" placeholder="https://api.example.com/v1" ${busy} /></label>
+        <label class="field"><span>API Key *</span><input id="providerKey" type="password" autocomplete="new-password" placeholder="${provider?.key_configured ? t("configuredReplace") : "sk-..."}" ${busy} /></label>
+      </div>
+      <div class="action-bar">
+        <button type="button" id="saveProvider" ${busy}>${llmText("保存服务商", "Save provider")}</button>
+        <button type="button" id="fetchModels" ${busy}>${llmText("保存并获取模型", "Save & fetch models")}</button>
+        ${provider ? `<button type="button" id="deleteProvider" ${busy}>${t("remove")}</button>` : ""}
+      </div>
+    </section>
+    ${provider ? `<section class="panel llm-panel">
+      <div class="panel-heading"><div><h2>${llmText("模型", "Models")} (${models.length})</h2>
+        <p>${llmText("勾选添加使用，并设置 text / image 标签。image 表示可用于远程生图。", "Check models to add and set text / image tags. Use image for remote image generation.")}</p></div></div>
+      <div class="model-toolbar">
+        <input id="modelSearch" placeholder="${llmText("搜索模型", "Search models")}" aria-label="${llmText("搜索模型", "Search models")}" />
+        <input id="manualModel" placeholder="${llmText("手动输入模型 ID", "Enter a model ID manually")}" aria-label="Model ID" ${busy} />
+        <button type="button" id="addManualModel" ${busy}>${llmText("添加模型", "Add model")}</button>
+      </div>
+      <div class="model-list">
+        ${models.map((model, index) => `<div class="model-row" data-model-index="${index}">
+          <label><input type="checkbox" data-model-add="${index}" ${model.added ? "checked" : ""} ${busy} /> ${escapeHtml(model.model_id)}</label>
+          <div class="model-tags">${["text", "image"].map((tag) => `<label><input type="checkbox" data-model-tag="${tag}" data-model="${index}" ${model.tags.includes(tag) ? "checked" : ""} ${busy} /> <span class="model-tag">${tag}</span></label>`).join("")}</div>
+        </div>`).join("") || `<p>${llmText("获取模型列表，或手动添加模型。", "Fetch the model list or add a model manually.")}</p>`}
+      </div>
+      <div class="action-bar"><button type="button" id="saveModels" ${busy}>${llmText("保存模型选择和标签", "Save model selection & tags")}</button></div>
+    </section>` : ""}
+  `;
+}
+
+async function llmRequest(path, body) {
+  const response = await fetch(`/admin/api/llm/${path}`, {
+    method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body),
+  });
+  const payload = await response.json();
+  if (!response.ok || !payload.ok) throw new Error(payload.error || response.statusText);
+  if (payload.providers) lastStatus.llm = { providers: payload.providers };
+  return payload;
+}
+
+function attachLLMHandlers() {
+  if (currentPage !== "llm") return;
+  $("#newProvider")?.addEventListener("click", () => { activeProvider = ""; renderPage(); });
+  $("#providerSelect")?.addEventListener("change", (event) => { activeProvider = event.target.value; renderPage(); });
+  async function act(action) {
+    if (llmBusy) return;
+    llmBusy = true;
+    document.querySelectorAll("#pageMount button, #pageMount input, #pageMount select").forEach((control) => { control.disabled = true; });
+    try {
+      await action();
+      showMessage(llmText("已保存到 SQLite。", "Saved to SQLite."), "success");
+    } catch (error) {
+      showMessage(error.message, "danger");
+      return;
+    } finally {
+      llmBusy = false;
+      document.querySelectorAll("#pageMount button, #pageMount input, #pageMount select").forEach((control) => { control.disabled = false; });
+    }
+    renderPage();
+  }
+  async function saveProvider() {
+    const payload = await llmRequest("providers/save", {
+      id: activeProvider || undefined, name: $("#providerName").value.trim(),
+      base_url: $("#providerUrl").value.trim(), api_key: $("#providerKey").value.trim(),
+    });
+    activeProvider = payload.provider_id;
+    return activeProvider;
+  }
+  $("#saveProvider")?.addEventListener("click", () => act(saveProvider));
+  $("#fetchModels")?.addEventListener("click", () => act(async () => {
+    const id = await saveProvider();
+    const payload = await llmRequest("discover", { provider_id: id });
+    const prior = modelDrafts[id] || (lastStatus.llm.providers.find((item) => item.id === id)?.models || []).map((model) => ({ ...model, added: true }));
+    const known = new Map(prior.map((model) => [model.model_id, model]));
+    for (const model_id of payload.models) {
+      if (!known.has(model_id)) known.set(model_id, { model_id, added: false, tags: ["text"] });
+    }
+    modelDrafts[id] = [...known.values()].sort((a, b) => a.model_id.localeCompare(b.model_id));
+  }));
+  $("#deleteProvider")?.addEventListener("click", () => act(async () => {
+    await llmRequest("providers/delete", { provider_id: activeProvider });
+    delete modelDrafts[activeProvider];
+    activeProvider = null;
+  }));
+  $("#addManualModel")?.addEventListener("click", () => {
+    const model_id = $("#manualModel").value.trim();
+    if (!model_id) return;
+    const rows = modelDrafts[activeProvider] || [];
+    const existing = rows.find((model) => model.model_id === model_id);
+    if (existing) existing.added = true;
+    else rows.push({ model_id, added: true, tags: ["text"] });
+    modelDrafts[activeProvider] = rows;
+    renderPage();
+  });
+  document.querySelectorAll("[data-model-add]").forEach((control) => control.addEventListener("change", () => {
+    modelDrafts[activeProvider][Number(control.dataset.modelAdd)].added = control.checked;
+  }));
+  document.querySelectorAll("[data-model-tag]").forEach((control) => control.addEventListener("change", () => {
+    const model = modelDrafts[activeProvider][Number(control.dataset.model)];
+    model.tags = control.checked ? [...new Set([...model.tags, control.dataset.modelTag])] : model.tags.filter((tag) => tag !== control.dataset.modelTag);
+  }));
+  $("#saveModels")?.addEventListener("click", () => act(async () => {
+    await llmRequest("models/save", { provider_id: activeProvider, models: (modelDrafts[activeProvider] || []).filter((model) => model.added).map(({ model_id, tags }) => ({ model_id, tags })) });
+  }));
+  $("#modelSearch")?.addEventListener("input", (event) => {
+    const query = event.target.value.toLowerCase();
+    document.querySelectorAll("[data-model-index]").forEach((row) => { row.hidden = !modelDrafts[activeProvider][Number(row.dataset.modelIndex)].model_id.toLowerCase().includes(query); });
+  });
 }
 
 function renderLocalImagePage(mount) {
@@ -674,6 +836,15 @@ function moduleToggle(moduleId) {
 }
 
 function field(name, options = {}) {
+  if (name === "IMAGE_MODEL_ID") {
+    const selected = getValue(name);
+    const models = (lastStatus.llm?.providers || []).flatMap((provider) => provider.models.filter((model) => model.tags.includes("image")).map((model) => ({ ...model, providerName: provider.name })));
+    return `<label class="field required"><span>${t("field.model")} <b>*</b></span>
+      <select name="IMAGE_MODEL_ID" ${moduleEnabled("image") ? "required" : ""}>
+        <option value="">${llmText("请选择 image 模型", "Select an image model")}</option>
+        ${models.map((model) => `<option value="${escapeAttr(model.id)}" ${model.id === selected ? "selected" : ""}>${escapeHtml(model.providerName)} / ${escapeHtml(model.model_id)}</option>`).join("")}
+      </select><small><a href="#llm">${llmText("前往 LLM 管理添加或标记 image 模型", "Add or tag image models in LLM Management")}</a></small></label>`;
+  }
   const meta = FIELD_META[name] || { label: name };
   const label = meta.label?.startsWith("field.") ? t(meta.label) : meta.label || name;
   const visuallyRequired = options.required ?? !!meta.requiredWhen;
@@ -795,10 +966,12 @@ function actionBar(label) {
 }
 
 function attachDynamicHandlers() {
+  attachLLMHandlers();
   $("#reloadDraft")?.addEventListener("click", () => loadStatus(false));
   document.querySelectorAll("[name], textarea[name]").forEach((input) => {
     input.addEventListener("input", () => {
       input.classList.toggle("invalid", input.required && !input.value.trim());
+      if (input.name === "IMAGE_MODEL_ID") updateLocalField(input.name, input.value);
     });
     input.addEventListener("change", () => {
       if (Object.values(MODULE_SWITCHES).includes(input.name)) {
@@ -927,11 +1100,12 @@ function saveActiveAgentDraft() {
 
 async function saveConfig(event) {
   event.preventDefault();
+  if (currentPage === "llm") return;
   saveActiveAgentDraft();
   draftAgents.forEach((agent) => {
     if (agent.enabled && agentMissing(agent).length) agent.enabled = false;
   });
-  const invalid = Array.from(document.querySelectorAll("input[required], textarea[required]")).filter((input) => !input.value.trim());
+  const invalid = Array.from(document.querySelectorAll("#configForm input[required], #configForm textarea[required], #configForm select[required]")).filter((input) => !input.value.trim());
   invalid.forEach((input) => input.classList.add("invalid"));
   const owned = collectOwnedFields();
   const incompleteEnabled = enabledModulesWithMissingFields(owned, modulesSavedByCurrentPage());
@@ -960,9 +1134,9 @@ async function saveConfig(event) {
 
 function collectOwnedFields() {
   const owned = { ...(lastStatus?.webui?.owned_fields || {}) };
-  document.querySelectorAll("#configForm input[name], #configForm textarea[name]").forEach((input) => {
+  document.querySelectorAll("#configForm input[name], #configForm textarea[name], #configForm select[name]").forEach((input) => {
     if (input.type === "password" && !input.value.trim()) return;
-    owned[input.name] = input.type === "checkbox" ? (input.checked ? "true" : "false") : input.value.trim() || owned[input.name] || "";
+    owned[input.name] = input.type === "checkbox" ? (input.checked ? "true" : "false") : input.value.trim();
   });
   Object.values(MODULE_SWITCHES).forEach((envName) => {
     const input = document.querySelector(`[name="${envName}"]`);

@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from http.client import HTTPConnection
 from pathlib import Path
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 from core.errors import POLICY_DENIED
@@ -16,6 +17,11 @@ from transport.mcp_server import GatewayHTTPServer, GatewayRequestHandler
 
 
 class McpTransportTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.auth_env = patch.dict(os.environ, {"HOME_MCP_LOGIN_KEY": "test-host-token", "HOME_MCP_DEV_MODE": "false"})
+        self.auth_env.start()
+        self.addCleanup(self.auth_env.stop)
+
     def test_root_redirects_to_webui(self) -> None:
         services, registry, dispatcher = fresh_gateway()
         httpd = GatewayHTTPServer(
@@ -299,8 +305,11 @@ class McpTransportTests(unittest.TestCase):
             httpd.server_close()
             thread.join(timeout=5)
 
-    def test_admin_status_and_config_yaml_require_admin_token(self) -> None:
+    def test_admin_status_and_sqlite_config_require_login_key(self) -> None:
         services, registry, dispatcher = fresh_gateway()
+        provider_id = services.llm.save_provider({"name": "Images", "base_url": "https://api.example.test", "api_key": "test-image-key"})
+        services.llm.save_models(provider_id, [{"model_id": "test-image-model", "tags": ["image"]}])
+        model_id = services.llm.models(provider_id)[0]["id"]
         with tempfile.TemporaryDirectory() as tmp:
             old_cwd = Path.cwd()
             root = Path(tmp)
@@ -335,7 +344,7 @@ class McpTransportTests(unittest.TestCase):
                 payload = json.loads(response.read().decode("utf-8"))
                 self.assertTrue(payload["ok"])
                 self.assertIn("webui", payload)
-                self.assertIn("IMAGE_API_MODEL", payload["local_env"])
+                self.assertIn("IMAGE_MODEL_ID", payload["local_env"])
                 conn.close()
 
                 save = HTTPConnection(host, port, timeout=5)
@@ -346,9 +355,7 @@ class McpTransportTests(unittest.TestCase):
                         {
                             "owned_fields": {
                                 "IMAGE_MODULE_ENABLED": "true",
-                                "IMAGE_API_BASE_URL": "https://api.example.test",
-                                "IMAGE_API_MODEL": "test-image-model",
-                                "IMAGE_API_KEY": "test-image-key",
+                                "IMAGE_MODEL_ID": model_id,
                             }
                         }
                     ),
@@ -361,9 +368,10 @@ class McpTransportTests(unittest.TestCase):
                 self.assertEqual(save_response.status, 200)
                 save_payload = json.loads(save_response.read().decode("utf-8"))
                 self.assertTrue(save_payload["ok"])
-                saved_config = (root / "config" / "config.yaml").read_text(encoding="utf-8")
-                self.assertIn("image:", saved_config)
-                self.assertIn("enabled: true", saved_config)
+                saved_config = services.management.load()
+                self.assertTrue(saved_config["modules"]["image"]["enabled"])
+                self.assertEqual(saved_config["modules"]["image"]["model_id"], model_id)
+                self.assertFalse((root / "config" / "config.yaml").exists())
                 save.close()
             finally:
                 httpd.shutdown()
@@ -424,13 +432,12 @@ class McpTransportTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 payload = json.loads(response.read().decode("utf-8"))
                 self.assertTrue(payload["ok"])
-                self.assertTrue((root / "config" / "agent" / "config.agent.agent_web.yaml").is_file())
-                config_text = (root / "config" / "config.yaml").read_text(encoding="utf-8")
-                agent_text = (root / "config" / "agent" / "config.agent.agent_web.yaml").read_text(encoding="utf-8")
-                self.assertIn("enabled:", config_text)
-                self.assertIn("- agent_web", config_text)
-                self.assertIn("token: gateway-token", agent_text)
-                self.assertIn("access_token: matrix-token", agent_text)
+                self.assertFalse((root / "config" / "agent" / "config.agent.agent_web.yaml").exists())
+                config = services.management.load()
+                self.assertEqual(config["agents"]["enabled"], ["agent_web"])
+                fragment = config["_agent_fragments"]["agent_web"]
+                self.assertEqual(fragment["caller"]["token"], "gateway-token")
+                self.assertEqual(fragment["matrix"]["access_token"], "matrix-token")
                 conn.close()
             finally:
                 httpd.shutdown()

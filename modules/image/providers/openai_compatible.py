@@ -8,6 +8,7 @@ from typing import Any
 from urllib import error, request
 
 from app.config import Settings
+from core.llm import api_root
 from core.errors import (
     GatewayError,
     PROVIDER_REJECTED,
@@ -61,6 +62,8 @@ class OpenAICompatibleImageProvider:
     def from_settings(cls, settings: Settings) -> "OpenAICompatibleImageProvider":
         image_config = settings.modules.get("image", {})
         provider_config = image_config.get("openai_compatible", {})
+        if not all(provider_config.get(key) for key in ("base_url", "model", "api_key")):
+            raise GatewayError(PROVIDER_UNAVAILABLE, "No Remote Image model is configured")
         return cls(
             base_url=str(provider_config["base_url"]),
             model=str(provider_config["model"]),
@@ -87,7 +90,7 @@ class OpenAICompatibleImageProvider:
         }
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         req = request.Request(
-            f"{self.base_url}/v1/images/generations",
+            f"{api_root(self.base_url)}/images/generations",
             data=body,
             method="POST",
             headers={
@@ -119,7 +122,7 @@ class OpenAICompatibleImageProvider:
         files = [("image[]", image.filename, image.mime_type, image.data) for image in images]
         body, content_type = _encode_multipart(fields, files)
         req = request.Request(
-            f"{self.base_url}/v1/images/edits",
+            f"{api_root(self.base_url)}/images/edits",
             data=body,
             method="POST",
             headers={
@@ -131,6 +134,7 @@ class OpenAICompatibleImageProvider:
         return _decode_image_response(self._send(req))
 
     def _send(self, req: request.Request) -> bytes:
+        req.add_header("User-Agent", "home-mcp-gateway/0.2.2")
         try:
             with self.opener(req, timeout=self.timeout_seconds) as response:
                 return response.read()

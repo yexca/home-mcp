@@ -4,14 +4,14 @@ import json
 import re
 import shutil
 import subprocess
+import secrets
+from urllib.parse import urlparse
 from copy import deepcopy
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any, Callable
 
-import yaml
-
-from core.errors import GatewayError
+from app.config import Settings
 from transport.request_context import CoreServices
 
 
@@ -23,7 +23,6 @@ WEBUI_MIME_TYPES = {
 }
 USER_CONFIG_PATH = Path("config/config.yaml")
 DEFAULT_AGENT_CONFIG_DIR = Path("config/agent")
-MANAGED_AGENT_MARKER = "# Managed by WebUI"
 MATRIX_TOOLS = ("matrix_send_text", "matrix_send_image", "matrix_send_audio")
 SECRET_ENV_RE = re.compile(r"(TOKEN|KEY|SECRET|PASSWORD)", re.IGNORECASE)
 
@@ -72,15 +71,13 @@ def _mask_value(value: str) -> str:
 
 
 FIELD_PATHS: dict[str, tuple[tuple[str, ...], Callable[[str], Any]]] = {
+    "IMAGE_MODEL_ID": (("modules", "image", "model_id"), _string),
     "ARTIFACT_PUBLIC_BASE_URL": (("artifacts", "public_base_url"), _string),
     "IMAGE_MODULE_ENABLED": (("modules", "image", "enabled"), _bool),
     "LOCAL_IMAGE_MODULE_ENABLED": (("modules", "localimage", "enabled"), _bool),
     "TTS_MODULE_ENABLED": (("modules", "tts", "enabled"), _bool),
     "MATRIX_MODULE_ENABLED": (("modules", "matrix", "enabled"), _bool),
     "PRINTER_MODULE_ENABLED": (("modules", "printer", "enabled"), _bool),
-    "IMAGE_API_BASE_URL": (("modules", "image", "openai_compatible", "base_url"), _string),
-    "IMAGE_API_MODEL": (("modules", "image", "openai_compatible", "model"), _string),
-    "IMAGE_API_KEY": (("modules", "image", "openai_compatible", "api_key"), _string),
     "IMAGE_TOTAL_TIMEOUT_SECONDS": (("modules", "image", "total_timeout_seconds"), _number),
     "IMAGE_PROVIDER_TIMEOUT_SECONDS": (("modules", "image", "openai_compatible", "timeout_seconds"), _number),
     "IMAGE_MAX_DOWNLOAD_BYTES": (("modules", "image", "max_download_bytes"), _number),
@@ -137,10 +134,16 @@ def serve_webui(handler, path: str) -> None:
 
 
 def handle_admin_get(handler, services: CoreServices, path: str) -> None:
+    if path == "/admin/api/auth":
+        _json(handler, {"ok": True, "dev_mode": services.config.webui["dev_mode"], "login_configured": bool(services.config.webui["login_key"])})
+        return
     if not _authorize(handler, services):
         return
+    if path == "/admin/api/llm":
+        _json(handler, {"ok": True, **services.llm.catalog()})
+        return
     if path == "/admin/api/status":
-        status_config = _status_config(services.config.raw)
+        status_config = _management_status(services)
         config_values = _config_field_values(status_config)
         _json(
             handler,
@@ -153,15 +156,20 @@ def handle_admin_get(handler, services: CoreServices, path: str) -> None:
                     "port": services.config.server.get("port"),
                 },
                 "modules": services.config.enabled_modules(),
+                "configured_modules": Settings(status_config).enabled_modules(),
+                "restart_required": _restart_required(services, status_config),
                 "webui": {
                     "enabled": True,
-                    "active_snapshot": str(USER_CONFIG_PATH),
-                    "path": str(USER_CONFIG_PATH),
+                    "active_snapshot": services.config.database["path"],
+                    "path": services.config.database["path"],
+                    "storage": "sqlite",
                     "owned_fields": {},
                 },
                 "local_env": mask_secret_fields(config_values),
                 "agents": _agent_status(status_config),
                 "environment": _environment_status(status_config),
+                "llm": services.llm.catalog(),
+                "dev_mode": services.config.webui["dev_mode"],
             },
         )
         return
@@ -171,19 +179,21 @@ def handle_admin_get(handler, services: CoreServices, path: str) -> None:
 def handle_admin_post(handler, services: CoreServices, path: str) -> None:
     if not _authorize(handler, services):
         return
+    if path.startswith("/admin/api/llm/"):
+        try:
+            payload = _read_json_body(handler)
+            with services.management.lock:
+                result = _handle_llm_action(services, path, payload)
+        except (OSError, ValueError, TypeError) as exc:
+            _json(handler, {"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+        _json(handler, {"ok": True, **result})
+        return
     if path == "/admin/api/config":
         try:
             payload = _read_json_body(handler)
-            status_config = _status_config(services.config.raw)
-            owned_fields = _preserve_existing_secrets(payload.get("owned_fields", {}), status_config)
-            agents = payload.get("agents")
-            agent_result = _prepare_agent_configs(agents, status_config) if agents is not None else None
-            candidate_config = _candidate_save_config(status_config, owned_fields, agent_result)
-            _validate_enabled_module_requirements(candidate_config)
-            result = _write_user_config_fields(owned_fields)
-            if agents is not None:
-                _write_prepared_agent_configs(agent_result)
-                _write_enabled_agents([agent["name"] for agent in agent_result["agents"] if agent.get("enabled")])
+            with services.management.lock:
+                result, agent_result = _save_management_config(services, payload)
         except (OSError, ValueError) as exc:
             _json(handler, {"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
@@ -192,24 +202,59 @@ def handle_admin_post(handler, services: CoreServices, path: str) -> None:
     _json(handler, {"ok": False, "error": "not found"}, status=HTTPStatus.NOT_FOUND)
 
 
+def _save_management_config(services: CoreServices, payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    status_config = _management_status(services)
+    if not isinstance(payload.get("owned_fields", {}), dict):
+        raise ValueError("owned_fields must be an object")
+    owned_fields = _preserve_existing_secrets(payload.get("owned_fields", {}), status_config)
+    agents = payload.get("agents")
+    agent_result = _prepare_agent_configs(agents, status_config) if agents is not None else None
+    candidate_config = _candidate_save_config(status_config, owned_fields, agent_result)
+    _validate_enabled_module_requirements(candidate_config)
+    image = candidate_config.get("modules", {}).get("image", {})
+    if image.get("model_id"):
+        image.setdefault("openai_compatible", {}).update(services.llm.resolve_image(image["model_id"]))
+    elif image.get("enabled"):
+        raise ValueError("Select an added image model for Remote Image")
+    else:
+        for field in ("base_url", "model", "api_key"):
+            image.get("openai_compatible", {}).pop(field, None)
+    services.management.save(candidate_config)
+    # Existing image tools pick up new selections immediately; registration still requires a restart.
+    _replace_runtime_image(services, image)
+    return {
+        "path": services.config.database["path"],
+        "storage": "sqlite",
+        "owned_fields": mask_secret_fields(_config_field_values(candidate_config)),
+    }, agent_result
+
+
 def _authorize(handler, services: CoreServices) -> bool:
+    origin = handler.headers.get("Origin")
+    if origin and urlparse(origin).netloc != handler.headers.get("Host"):
+        _json(handler, {"ok": False, "error": "cross-origin admin request denied"}, status=HTTPStatus.FORBIDDEN)
+        return False
+    if services.config.webui["dev_mode"]:
+        return True
+    key = services.config.webui["login_key"]
+    if not key:
+        _json(handler, {"ok": False, "error": "Set HOME_MCP_LOGIN_KEY or enable HOME_MCP_DEV_MODE"}, status=HTTPStatus.SERVICE_UNAVAILABLE)
+        return False
     authorization = handler.headers.get("Authorization")
     if not authorization:
-        _json(handler, {"ok": False, "error": "admin token required"}, status=HTTPStatus.UNAUTHORIZED)
+        _json(handler, {"ok": False, "error": "login key required"}, status=HTTPStatus.UNAUTHORIZED)
         return False
-    try:
-        caller = services.policy.resolve_caller(authorization, remote_addr=handler.client_address[0])
-    except GatewayError:
-        _json(handler, {"ok": False, "error": "invalid admin token"}, status=HTTPStatus.FORBIDDEN)
-        return False
-    if caller.role != "admin":
-        _json(handler, {"ok": False, "error": "admin role required"}, status=HTTPStatus.FORBIDDEN)
+    if not authorization.startswith("Bearer ") or not secrets.compare_digest(authorization[7:].encode("utf-8"), key.encode("utf-8")):
+        _json(handler, {"ok": False, "error": "invalid login key"}, status=HTTPStatus.FORBIDDEN)
         return False
     return True
 
 
 def _read_json_body(handler) -> dict[str, Any]:
-    body = handler.rfile.read(int(handler.headers.get("Content-Length", "0") or "0"))
+    length = int(handler.headers.get("Content-Length", "0") or "0")
+    if length < 0 or length > 4 * 1024 * 1024:
+        raise ValueError("request body is too large")
+    body = handler.rfile.read(length)
     loaded = json.loads(body.decode("utf-8") or "{}")
     if not isinstance(loaded, dict):
         raise ValueError("request body must be a JSON object")
@@ -221,8 +266,55 @@ def _json(handler, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) 
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Cache-Control", "no-store")
     handler.end_headers()
     handler.wfile.write(body)
+
+
+def _management_status(services: CoreServices) -> dict[str, Any]:
+    config = services.management.load() or deepcopy(services.config.raw)
+    image = config.get("modules", {}).get("image", {})
+    if image.get("model_id"):
+        image.setdefault("openai_compatible", {}).update(services.llm.resolve_image(image["model_id"]))
+    return config
+
+
+def _handle_llm_action(services: CoreServices, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    provider_id = str(payload.get("provider_id", ""))
+    if path == "/admin/api/llm/providers/save":
+        saved_id = services.llm.save_provider(payload)
+        image = deepcopy(services.config.modules.get("image", {}))
+        if image.get("model_id"):
+            image.setdefault("openai_compatible", {}).update(services.llm.resolve_image(image["model_id"]))
+            _replace_runtime_image(services, image)
+        return {"provider_id": saved_id, **services.llm.catalog()}
+    if path == "/admin/api/llm/providers/delete":
+        services.llm.delete_provider(provider_id)
+    elif path == "/admin/api/llm/discover":
+        return {"models": services.llm.discover(provider_id)}
+    elif path == "/admin/api/llm/models/save":
+        services.llm.save_models(provider_id, payload.get("models"))
+    else:
+        raise ValueError("Unknown model management action")
+    return services.llm.catalog()
+
+
+def _replace_runtime_image(services: CoreServices, image: dict[str, Any]) -> None:
+    # Retain settings snapshots held by background jobs already in progress.
+    runtime = deepcopy(services.config.raw)
+    replacement = deepcopy(image)
+    # enabled reflects the tool set registered at startup, until the next restart.
+    replacement["enabled"] = bool(services.config.modules.get("image", {}).get("enabled", False))
+    runtime.setdefault("modules", {})["image"] = replacement
+    services.config = Settings(runtime)
+
+
+def _restart_required(services: CoreServices, saved: dict[str, Any]) -> bool:
+    modules = saved.get("modules", {})
+    return any(
+        bool(modules.get(name, {}).get("enabled", False)) != bool(services.config.modules.get(name, {}).get("enabled", False))
+        for name in set(modules) | set(services.config.modules)
+    )
 
 
 def _config_field_values(config: dict[str, Any]) -> dict[str, str]:
@@ -240,33 +332,6 @@ def _config_field_values(config: dict[str, Any]) -> dict[str, str]:
     return values
 
 
-def _status_config(runtime_config: dict[str, Any]) -> dict[str, Any]:
-    user_config = _read_yaml(USER_CONFIG_PATH)
-    module_enabled_overrides = _module_enabled_values(user_config)
-    config = _deep_merge(runtime_config, user_config)
-    agents_config = config.get("agents", {})
-    if isinstance(agents_config, dict) and "enabled" in agents_config:
-        enabled = set(_enabled_agents(config))
-        config_dir = _agent_config_dir(config)
-        for agent_name in _enabled_agents(config):
-            fragment = _read_yaml(config_dir / f"config.agent.{agent_name}.yaml")
-            if fragment:
-                _merge_agent_fragment(config, agent_name, fragment)
-        _prune_disabled_agent_config(config, _configured_agent_names(config) - enabled)
-    _restore_module_enabled_values(config, module_enabled_overrides)
-    return config
-
-
-def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-    result = deepcopy(base)
-    for key, value in override.items():
-        if isinstance(value, dict) and isinstance(result.get(key), dict):
-            result[key] = _deep_merge(result[key], value)
-        else:
-            result[key] = deepcopy(value)
-    return result
-
-
 def _environment_status(config: dict[str, Any]) -> dict[str, Any]:
     agent_config_dir = _agent_config_dir(config)
     return {
@@ -277,23 +342,6 @@ def _environment_status(config: dict[str, Any]) -> dict[str, Any]:
         "artifact_root": _path_status(Path(str(config.get("artifacts", {}).get("root", "./artifacts")))),
         "database_path": _path_status(Path(str(config.get("database", {}).get("path", "./artifacts/metadata.sqlite3")))),
     }
-
-
-def _module_enabled_values(config: dict[str, Any]) -> dict[str, bool]:
-    modules = config.get("modules", {})
-    if not isinstance(modules, dict):
-        return {}
-    values: dict[str, bool] = {}
-    for module_name, module_config in modules.items():
-        if isinstance(module_config, dict) and "enabled" in module_config:
-            values[str(module_name)] = bool(module_config["enabled"])
-    return values
-
-
-def _restore_module_enabled_values(config: dict[str, Any], values: dict[str, bool]) -> None:
-    modules = config.setdefault("modules", {})
-    for module_name, enabled in values.items():
-        modules.setdefault(module_name, {})["enabled"] = enabled
 
 
 def _command_status(*args: str) -> dict[str, Any] | None:
@@ -322,17 +370,15 @@ def _path_status(path: Path) -> dict[str, Any]:
 def _agent_status(config: dict[str, Any]) -> list[dict[str, Any]]:
     agent_names = set(_enabled_agents(config))
     config_dir = _agent_config_dir(config)
-    if config_dir.is_dir():
-        for path in config_dir.glob("config.agent.*.yaml"):
-            agent_names.add(path.name.removeprefix("config.agent.").removesuffix(".yaml"))
+    stored = config.get("_agent_fragments", {})
+    agent_names |= set(stored)
 
     agents: list[dict[str, Any]] = []
     enabled = set(_enabled_agents(config))
     for name in sorted(agent_names):
         if not _valid_agent_name(name):
             continue
-        config_path = config_dir / f"config.agent.{name}.yaml"
-        fragment = _read_yaml(config_path)
+        fragment = stored.get(name, {})
         caller = fragment.get("caller", {}) if isinstance(fragment.get("caller", {}), dict) else {}
         matrix = fragment.get("matrix", {}) if isinstance(fragment.get("matrix", {}), dict) else {}
         high_risk_tools = fragment.get("high_risk_tools", [])
@@ -344,8 +390,8 @@ def _agent_status(config: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "name": name,
                 "enabled": name in enabled,
-                "config_path": str(config_path),
-                "has_config": config_path.is_file(),
+                "config_path": "SQLite",
+                "has_config": name in stored,
                 "caller": {
                     "role": caller.get("role", "role_play"),
                     "shared_artifact_read": bool(caller.get("shared_artifact_read", False)),
@@ -365,18 +411,6 @@ def _agent_status(config: dict[str, Any]) -> list[dict[str, Any]]:
     return agents
 
 
-def _write_user_config_fields(raw_fields: Any) -> dict[str, Any]:
-    if not isinstance(raw_fields, dict):
-        raise ValueError("owned_fields must be an object")
-    config = _read_yaml(USER_CONFIG_PATH)
-    _apply_config_fields(config, raw_fields)
-    _write_yaml(USER_CONFIG_PATH, config)
-    return {
-        "path": str(USER_CONFIG_PATH),
-        "owned_fields": mask_secret_fields(_config_field_values(config)),
-    }
-
-
 def _apply_config_fields(config: dict[str, Any], raw_fields: dict[str, Any]) -> None:
     for name, raw_value in raw_fields.items():
         if name not in FIELD_PATHS:
@@ -386,25 +420,10 @@ def _apply_config_fields(config: dict[str, Any], raw_fields: dict[str, Any]) -> 
         _set_nested(config, path, value)
 
 
-def _write_enabled_agents(agent_names: list[str]) -> None:
-    config = _read_yaml(USER_CONFIG_PATH)
-    config.setdefault("agents", {})["enabled"] = agent_names
-    config.setdefault("agents", {})["config_dir"] = str(DEFAULT_AGENT_CONFIG_DIR).replace("\\", "/")
-    _write_yaml(USER_CONFIG_PATH, config)
-
-
-def _write_agent_configs(raw_agents: Any, config: dict[str, Any]) -> dict[str, Any]:
-    prepared = _prepare_agent_configs(raw_agents, config)
-    _write_prepared_agent_configs(prepared)
-    return _public_agent_result(prepared) or {"agents": [], "agent_config_dir": str(_agent_config_dir(config))}
-
-
 def _prepare_agent_configs(raw_agents: Any, config: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(raw_agents, list):
         raise ValueError("agents must be a list")
     config_dir = _agent_config_dir(config)
-    if not _can_write_dir(config_dir):
-        raise OSError(f"agent config directory is not writable: {config_dir}")
     normalized: list[dict[str, Any]] = []
     seen: set[str] = set()
     for raw_agent in raw_agents:
@@ -412,7 +431,11 @@ def _prepare_agent_configs(raw_agents: Any, config: dict[str, Any]) -> dict[str,
         if agent["name"] in seen:
             raise ValueError(f"duplicate agent name: {agent['name']}")
         seen.add(agent["name"])
-        _fill_existing_agent_secrets(agent, config_dir)
+        fragment = config.get("_agent_fragments", {}).get(agent["name"], {})
+        for section, field, source in (("caller", "gateway_token", "token"), ("matrix", "access_token", "access_token")):
+            prior = str(fragment.get(section, {}).get(source) or "")
+            if not agent[section][field] or agent[section][field] == _mask_value(prior):
+                agent[section][field] = prior
         if agent["enabled"]:
             _validate_enabled_agent(agent)
         normalized.append(agent)
@@ -427,9 +450,9 @@ def _prepare_agent_configs(raw_agents: Any, config: dict[str, Any]) -> dict[str,
 def _validate_enabled_agent(agent: dict[str, Any]) -> None:
     if not agent["caller"]["gateway_token"]:
         raise ValueError(f"Gateway Token is required when agent is enabled: {agent['name']}")
-    if not agent["matrix"]["access_token"]:
+    if agent["matrix"]["enabled"] and not agent["matrix"]["access_token"]:
         raise ValueError(f"Matrix Access Token is required when agent is enabled: {agent['name']}")
-    if not agent["matrix"]["account"]:
+    if agent["matrix"]["enabled"] and not agent["matrix"]["account"]:
         raise ValueError(f"Matrix Account is required when agent is enabled: {agent['name']}")
 
 
@@ -440,44 +463,6 @@ def _public_agent_result(prepared: dict[str, Any] | None) -> dict[str, Any] | No
         "agents": prepared.get("agents", []),
         "agent_config_dir": prepared.get("agent_config_dir", str(DEFAULT_AGENT_CONFIG_DIR)),
     }
-
-
-def _write_prepared_agent_configs(prepared: dict[str, Any] | None) -> None:
-    if not prepared:
-        return
-    config_dir = Path(str(prepared["agent_config_dir"]))
-    normalized = prepared.get("_normalized", [])
-    existing = set()
-    if config_dir.is_dir():
-        existing |= {path.name.removeprefix("config.agent.").removesuffix(".yaml") for path in config_dir.glob("config.agent.*.yaml")}
-
-    for agent in normalized:
-        _write_agent_config(config_dir / f"config.agent.{agent['name']}.yaml", agent)
-
-    disabled = existing - {agent["name"] for agent in normalized}
-    for name in disabled:
-        _remove_managed_file(config_dir / f"config.agent.{name}.yaml")
-
-
-def _can_write_dir(path: Path) -> bool:
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-        probe = path / ".webui-write-test"
-        probe.write_text("ok", encoding="utf-8")
-        probe.unlink()
-    except OSError:
-        return False
-    return True
-
-
-def _fill_existing_agent_secrets(agent: dict[str, Any], config_dir: Path) -> None:
-    existing = _read_yaml(config_dir / f"config.agent.{agent['name']}.yaml")
-    caller = existing.get("caller", {}) if isinstance(existing.get("caller", {}), dict) else {}
-    matrix = existing.get("matrix", {}) if isinstance(existing.get("matrix", {}), dict) else {}
-    if not agent["caller"]["gateway_token"]:
-        agent["caller"]["gateway_token"] = str(caller.get("token") or "")
-    if not agent["matrix"]["access_token"]:
-        agent["matrix"]["access_token"] = str(matrix.get("access_token") or "")
 
 
 def _normalize_agent(raw_agent: Any) -> dict[str, Any]:
@@ -510,11 +495,6 @@ def _normalize_agent(raw_agent: Any) -> dict[str, Any]:
     }
 
 
-def _write_agent_config(path: Path, agent: dict[str, Any]) -> None:
-    content = _agent_config_content(agent)
-    path.write_text(MANAGED_AGENT_MARKER + "\n" + yaml.safe_dump(content, allow_unicode=True, sort_keys=False), encoding="utf-8")
-
-
 def _agent_config_content(agent: dict[str, Any]) -> dict[str, Any]:
     content = {
         "caller": {
@@ -545,11 +525,14 @@ def _candidate_save_config(
         enabled_agent_names = [agent["name"] for agent in agent_result["agents"] if agent.get("enabled")]
         candidate.setdefault("agents", {})["enabled"] = enabled_agent_names
         candidate.setdefault("agents", {})["config_dir"] = str(DEFAULT_AGENT_CONFIG_DIR).replace("\\", "/")
+        candidate["_agent_fragments"] = {agent["name"]: _agent_config_content(agent) for agent in agent_result.get("_normalized", [])}
         _prune_disabled_agent_config(candidate, _configured_agent_names(candidate) - set(enabled_agent_names))
         for agent in agent_result.get("_normalized", []):
             if not agent["enabled"]:
                 continue
             _merge_agent_fragment(candidate, agent["name"], _agent_config_content(agent))
+        # Explicit module switches take precedence over agent-derived defaults.
+        _apply_config_fields(candidate, owned_fields)
     return candidate
 
 
@@ -582,6 +565,8 @@ def _require_list(config: dict[str, Any], path: tuple[str, ...], label: str) -> 
 
 def _require_image_config(image_config: Any) -> None:
     if not _module_enabled(image_config):
+        return
+    if image_config.get("model_id"):
         return
     _require_text(image_config, ("openai_compatible", "base_url"), "IMAGE_API_BASE_URL")
     _require_text(image_config, ("openai_compatible", "model"), "IMAGE_API_MODEL")
@@ -628,14 +613,6 @@ def _require_printer_config(printer_config: Any) -> None:
         return
     _require_text(printer_config, ("bridge_http", "url"), "PRINTER_BRIDGE_URL")
     _require_list(printer_config, ("allowed_printers",), "allowed_printers")
-
-
-def _remove_managed_file(path: Path) -> None:
-    if not path.is_file():
-        return
-    first_line = path.read_text(encoding="utf-8").splitlines()[0:1]
-    if first_line and first_line[0] in {MANAGED_AGENT_MARKER, "# Managed by tools/apply_agent.ps1"}:
-        path.unlink()
 
 
 def _preserve_existing_secrets(owned_fields: Any, config: dict[str, Any]) -> dict[str, Any]:
@@ -740,7 +717,9 @@ def _prune_disabled_agent_config(config: dict[str, Any], disabled_agents: set[st
         caller_accounts = matrix.get("caller_accounts", {})
         if isinstance(caller_accounts, dict):
             for agent_name in disabled_agents:
-                caller_accounts.pop(agent_name, None)
+                account_name = caller_accounts.pop(agent_name, None)
+                if account_name and account_name not in caller_accounts.values():
+                    matrix.get("accounts", {}).pop(account_name, None)
         accounts = matrix.get("accounts", {})
         if isinstance(accounts, dict):
             for agent_name in disabled_agents:
@@ -753,18 +732,6 @@ def _is_agent_managed_name(name: Any) -> bool:
 
 def _valid_agent_name(name: str) -> bool:
     return bool(name) and all(char.isalnum() or char in {"_", "-"} for char in name)
-
-
-def _read_yaml(path: Path) -> dict[str, Any]:
-    if not path.is_file():
-        return {}
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    return loaded if isinstance(loaded, dict) else {}
-
-
-def _write_yaml(path: Path, data: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
 
 def _get_nested(data: dict[str, Any], path: tuple[str, ...]) -> Any:

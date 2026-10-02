@@ -189,7 +189,7 @@ class ImageGenerateServiceTests(unittest.TestCase):
         services, _, _ = fresh_image_gateway()
         ctx = make_context(services)
         http_provider = FakeProvider([ProviderImageOutput("url", url="http://cdn.example.test/image.png")])
-        host_provider = FakeProvider([ProviderImageOutput("url", url="https://evil.example.test/image.png")])
+        host_provider = FakeProvider([ProviderImageOutput("url", url="https:///image.png")])
 
         with self.assertRaisesRegex(Exception, "scheme"):
             asyncio.run(ImageGenerationService(http_provider).generate({"prompt": "draw"}, ctx))
@@ -396,11 +396,13 @@ class ProviderHTTPRequestHandler(BaseHTTPRequestHandler):
     response_body = {"data": [{"b64_json": base64.b64encode(PNG_BYTES).decode("ascii")}]}
     request_body = {}
     auth_header = ""
+    user_agent = ""
 
     def do_POST(self) -> None:
         body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
         type(self).request_body = json.loads(body.decode("utf-8"))
         type(self).auth_header = self.headers.get("Authorization", "")
+        type(self).user_agent = self.headers.get("User-Agent", "")
         self.send_response(type(self).response_status)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
@@ -447,6 +449,7 @@ class OpenAICompatibleProviderTests(unittest.TestCase):
         self.assertEqual(ProviderHTTPRequestHandler.request_body["quality"], "auto")
         self.assertEqual(ProviderHTTPRequestHandler.request_body["output_format"], "png")
         self.assertEqual(ProviderHTTPRequestHandler.auth_header, "Bearer test-image-api-key")
+        self.assertEqual(ProviderHTTPRequestHandler.user_agent, "home-mcp-gateway/0.2.2")
 
     def test_http_status_error_mapping(self) -> None:
         cases = {
