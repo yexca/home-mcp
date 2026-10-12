@@ -4,8 +4,9 @@ import json
 import sqlite3
 from dataclasses import dataclass
 from typing import Any
+from threading import RLock
 
-from core.errors import ARTIFACT_FORBIDDEN, ARTIFACT_NOT_FOUND, GatewayError, INVALID_ARGUMENT
+from core.errors import ARTIFACT_FORBIDDEN, ARTIFACT_NOT_FOUND, GatewayError, INVALID_ARGUMENT, RATE_LIMITED
 from core.ids import new_job_id
 from core.policy import CallerIdentity
 from core.time import utc_now_iso
@@ -54,11 +55,15 @@ class Job:
 class JobManager:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
+        self._lock = RLock()
 
-    def create(self, *, request_id: str, caller_id: str, tool_name: str, input_summary: dict[str, Any]) -> Job:
+    def create(self, *, request_id: str, caller_id: str, tool_name: str, input_summary: dict[str, Any], limits: dict[str, Any] | None = None) -> Job:
         now = utc_now_iso()
         job_id = new_job_id()
-        with self.conn:
+        with self._lock, self.conn:
+            # Serialize admission across connections before checking active jobs.
+            self.conn.execute("BEGIN IMMEDIATE")
+            self._check_capacity(tool_name, caller_id, limits or {})
             self.conn.execute(
                 """
                 INSERT INTO jobs
@@ -70,11 +75,31 @@ class JobManager:
             )
         return self.get(job_id, CallerIdentity(caller_id, role="admin", shared_artifact_read=True))
 
+    def _check_capacity(self, tool_name: str, caller_id: str, limits: dict[str, Any]) -> None:
+        groups = {
+            "image": ("image_generate", "image_edit", "local_image_generate"),
+            "tts": ("tts_synthesize",),
+            "print": ("printer_print_file",),
+        }
+        for group, names in groups.items():
+            if tool_name not in names:
+                continue
+            placeholders = ",".join("?" for _ in names)
+            rows = self.conn.execute(
+                f"SELECT caller_id FROM jobs WHERE tool_name IN ({placeholders}) AND status IN ('pending', 'running')", names,
+            ).fetchall()
+            global_limit = int(limits.get(f"max_{group}_jobs_global", 0))
+            caller_limit = int(limits.get(f"max_{group}_jobs_per_caller", 0))
+            if global_limit and len(rows) >= global_limit:
+                raise GatewayError(RATE_LIMITED, f"{group} global concurrent job limit exceeded", retryable=True)
+            if caller_limit and sum(row["caller_id"] == caller_id for row in rows) >= caller_limit:
+                raise GatewayError(RATE_LIMITED, f"{group} caller concurrent job limit exceeded", retryable=True)
+
     def mark_running(self, job_id: str) -> None:
         job = self._get_unchecked(job_id)
         self._ensure_not_terminal(job)
         now = utc_now_iso()
-        with self.conn:
+        with self._lock, self.conn:
             self.conn.execute(
                 "UPDATE jobs SET status = 'running', started_at = COALESCE(started_at, ?), updated_at = ? WHERE id = ?",
                 (now, now, job_id),
@@ -85,7 +110,7 @@ class JobManager:
             raise GatewayError(INVALID_ARGUMENT, "job progress must be between 0 and 1")
         job = self._get_unchecked(job_id)
         self._ensure_not_terminal(job)
-        with self.conn:
+        with self._lock, self.conn:
             self.conn.execute(
                 "UPDATE jobs SET progress = ?, result_summary_json = COALESCE(?, result_summary_json), updated_at = ? WHERE id = ?",
                 (
@@ -100,7 +125,7 @@ class JobManager:
         job = self._get_unchecked(job_id)
         self._ensure_not_terminal(job)
         now = utc_now_iso()
-        with self.conn:
+        with self._lock, self.conn:
             self.conn.execute(
                 """
                 UPDATE jobs
@@ -121,7 +146,7 @@ class JobManager:
         job = self._get_unchecked(job_id)
         self._ensure_not_terminal(job)
         now = utc_now_iso()
-        with self.conn:
+        with self._lock, self.conn:
             self.conn.execute(
                 """
                 UPDATE jobs
@@ -153,7 +178,7 @@ class JobManager:
             return []
         now = utc_now_iso()
         placeholders = ",".join("?" for _ in job_ids)
-        with self.conn:
+        with self._lock, self.conn:
             self.conn.execute(
                 f"""
                 UPDATE jobs

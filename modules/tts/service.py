@@ -95,7 +95,7 @@ def prepare_tts_synthesize(arguments: dict[str, Any], ctx: RequestContext) -> Pr
     ctx.limits.check(
         f"tts_synthesize:{ctx.caller.caller_id}:day",
         limit=int(ctx.config.limits.get("tts_jobs_per_caller_per_day", 100)),
-        window_seconds=24 * 60 * 60,
+        window_seconds=int(ctx.config.limits.get("tts_rate_window_seconds", 86400)),
     )
     return PreparedTTSSynthesis(
         text=text,

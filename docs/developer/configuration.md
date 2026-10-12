@@ -89,12 +89,26 @@ The loader turns this into `callers.<name>`, `policy.high_risk_allowed_callers.<
 
 `HOME_MCP_LOGIN_KEY` supplies the management login key; `HOME_MCP_DEV_MODE=true` bypasses management authentication for development. Neither setting is persisted. MCP caller identity still uses caller tokens. The management key is checked with a constant-time comparison; management API responses use `Cache-Control: no-store` and reject cross-origin browser requests.
 
-The WebUI saves configuration and agent fragments to `management_config`, and providers/models to `llm_providers` / `llm_models`. Management writes use a separate SQLite connection and serialized transactions. Restart after module switch or agent changes so the registered MCP tool set is rebuilt.
+The WebUI saves configuration and agent fragments to `management_config`, and providers/models to `llm_providers` / `llm_models`. Management writes use a separate SQLite connection and serialized transactions. Module switches require a restart. Other controls and tool schemas apply immediately on save.
 
-Health/readiness module flags reflect the tool set enabled at startup. The admin status API exposes saved switches as `configured_modules` and reports `restart_required` when they differ from runtime switches. Remote image model/credential updates preserve the runtime enabled flag until restart, avoiding an enabled health report with unregistered tools.
+Health/readiness module flags reflect the tool set enabled at startup. The admin status API exposes saved switches as `configured_modules` and reports `restart_required` when they differ from runtime switches. Operational settings and agent policy are applied immediately without changing that startup tool set. Remote image model/credential updates preserve the runtime enabled flag until restart, avoiding an enabled health report with unregistered tools.
 
 Providers expose an OpenAI-compatible `GET /v1/models` endpoint. Model tags are explicitly assigned (`text`, `image`); tags do not imply automatic provider capability detection. `modules.image.model_id` selects a persisted model tagged `image`. Provider keys are never returned by management APIs. Legacy provider URL/model/key settings are imported once and removed from the saved management document. Existing remote image tools pick up new selections immediately; deletion or untagging of the selected model is rejected.
 
 ## Modules
+
+### Operational controls in the WebUI
+
+The **Settings** page manages image/TTS/print quotas and counting windows, Matrix room throttling, job concurrency, artifact size/expiry/signing, audit summary length, caller tokens and MCP policy. Module pages expose supported sizes/formats, input limits, image CDN hosts, ComfyUI presets/node mappings, TTS voices/languages/speed and print defaults.
+
+Quota keys retain their legacy `*_per_day` / `*_per_minute` names. Actual windows are `limits.image_rate_window_seconds`, `tts_rate_window_seconds`, `print_rate_window_seconds` (default 86400) and `matrix_rate_window_seconds` (default 60). A fixed window starts at the first request; counters are held in memory and reset on restart. Remote generation, image editing and local generation retain separate per-caller counters with the same image quota/window. Zero quota or concurrency values mean unlimited.
+
+Concurrency admission checks pending/running jobs inside a SQLite write transaction on a dedicated job connection. Image global/per-caller limits include all three image tools; TTS and print have independent global limits. Excess requests return retryable `RATE_LIMITED` without contacting the provider.
+
+Saving applies operational settings, caller/agent policy and updated tool schemas immediately. A prepared runtime snapshot replaces the settings, artifact store, policy, audit settings and registry together under a lock; each dispatched request captures one consistent snapshot. Background jobs keep their original snapshot. The shared rate limiter retains counters and recalculates the current window when its duration changes. Only module enable/disable switches require a restart; the header reports `restart_required` for these pending changes. Blank secret inputs preserve the existing value; APIs return masked secrets only. Invalid numbers, incompatible defaults and malformed workflow presets are rejected before saving.
+
+Image download allowlists include the provider API host and configured CDN hosts. Enter `*` in the host list to allow every hostname, including redirect targets. Empty lists allow only the API host. The same scheme/host checks apply to redirects; HTTP remains controlled separately by `allow_http_image_urls`. Artifact expiry affects new artifacts and does not implement automatic disk cleanup.
+
+Environment-only/bootstrap controls remain outside the WebUI: `HOME_MCP_LOGIN_KEY`, `HOME_MCP_DEV_MODE`, `CONFIG_PATH`, database location/WAL, server bind address/routes and artifact root. Provider driver choices remain fixed by each module. `audit.retention_days` / `log_provider_urls` currently have no implementation; they are intentionally not presented as working controls. The generic sync timeout is only a fallback when a module-specific timeout is missing.
 
 Module provider settings live under `modules.*` in YAML. Provider secrets such as image API keys, TTS API keys, Matrix access tokens, and printer bridge API keys are configuration values, never tool arguments.

@@ -144,7 +144,7 @@ def prepare_local_image_generate(arguments: dict[str, Any], ctx: RequestContext)
     ctx.limits.check(
         f"local_image_generate:{ctx.caller.caller_id}:day",
         limit=int(ctx.config.limits.get("image_jobs_per_caller_per_day", 20)),
-        window_seconds=24 * 60 * 60,
+        window_seconds=int(ctx.config.limits.get("image_rate_window_seconds", 86400)),
     )
     return PreparedLocalImageGenerate(
         prompt=prompt,

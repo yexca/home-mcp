@@ -33,21 +33,23 @@ class ToolDispatcher:
         audit_id: str | None = None
         policy_decision = "not_evaluated"
         arguments = arguments or {}
+        runtime = self.services.snapshot(self.registry)
         try:
-            definition = self.registry.get(tool_name)
+            definition = runtime.registry.get(tool_name)
             validated = validate_arguments(definition.input_schema, arguments)
-            caller = self.services.policy.resolve_caller(authorization, trusted_connection_metadata, remote_addr)
-            input_summary = self.services.audit.summarize_input(validated)
+            caller = runtime.policy.resolve_caller(authorization, trusted_connection_metadata, remote_addr)
+            input_summary = runtime.audit.summarize_input(validated)
             if definition.creates_job:
                 job = self.services.jobs.create(
                     request_id=request_id,
                     caller_id=caller.caller_id,
                     tool_name=tool_name,
                     input_summary=input_summary,
+                    limits=runtime.config.limits,
                 )
                 job_id = job.id
                 self.services.jobs.mark_running(job_id)
-            audit_id = self.services.audit.start(
+            audit_id = runtime.audit.start(
                 request_id=request_id,
                 job_id=job_id,
                 caller_id=caller.caller_id,
@@ -55,22 +57,22 @@ class ToolDispatcher:
                 risk_level=definition.risk_level,
                 arguments=validated,
             )
-            decision = self.services.policy.evaluate(
+            decision = runtime.policy.evaluate(
                 caller=caller,
                 tool_name=tool_name,
                 risk_level=definition.risk_level,
                 arguments=validated,
             )
             policy_decision = decision.action
-            self.services.policy.require_allowed(decision)
+            runtime.policy.require_allowed(decision)
             ctx = RequestContext(
                 request_id=request_id,
                 caller=caller,
-                config=self.services.config,
-                artifacts=self.services.artifacts,
+                config=runtime.config,
+                artifacts=runtime.artifacts,
                 jobs=self.services.jobs,
-                policy=self.services.policy,
-                audit=self.services.audit,
+                policy=runtime.policy,
+                audit=runtime.audit,
                 limits=self.services.limits,
                 job_id=job_id,
                 audit_id=audit_id,
@@ -87,7 +89,7 @@ class ToolDispatcher:
             if job_id:
                 self.services.jobs.mark_succeeded(job_id, result, artifact_ids)
                 result.setdefault("job_id", job_id)
-            self.services.audit.finish(
+            runtime.audit.finish(
                 audit_id=audit_id,
                 policy_decision=policy_decision,
                 status="succeeded",
@@ -98,7 +100,7 @@ class ToolDispatcher:
             if job_id:
                 self.services.jobs.mark_failed(job_id, exc.code, exc.message)
             if audit_id:
-                self.services.audit.finish(
+                runtime.audit.finish(
                     audit_id=audit_id,
                     policy_decision=policy_decision,
                     status="failed",
@@ -117,7 +119,7 @@ class ToolDispatcher:
             if job_id:
                 self.services.jobs.mark_failed(job_id, exc.code, exc.message)
             if audit_id:
-                self.services.audit.finish(
+                runtime.audit.finish(
                     audit_id=audit_id,
                     policy_decision=policy_decision,
                     status="failed",

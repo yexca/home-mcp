@@ -168,7 +168,7 @@ def _check_room_rate_limit(room_id: str, ctx: RequestContext) -> None:
     ctx.limits.check(
         f"matrix:{room_id}:minute",
         limit=int(ctx.config.limits.get("matrix_messages_per_room_per_minute", 5)),
-        window_seconds=60,
+        window_seconds=int(ctx.config.limits.get("matrix_rate_window_seconds", 60)),
     )
 
 

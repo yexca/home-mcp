@@ -4,6 +4,7 @@ import asyncio
 import json
 import queue
 import secrets
+import weakref
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -23,6 +24,16 @@ class GatewayHTTPServer(ThreadingHTTPServer):
         self.registry = registry
         self.dispatcher = dispatcher
         self.sse_sessions: dict[str, SseSession] = {}
+        server_ref = weakref.ref(self)
+        def notify_tools_changed():
+            server = server_ref()
+            if server is not None:
+                server.notify_tools_changed()
+        services.on_tools_changed = notify_tools_changed
+
+    def notify_tools_changed(self) -> None:
+        for session in list(self.sse_sessions.values()):
+            session.send("message", {"jsonrpc": "2.0", "method": "notifications/tools/list_changed"})
 
 
 class SseSession:
@@ -93,7 +104,7 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
                 self._json(response or {"ok": True}, status=status)
                 return
             if payload.get("method") == "tools/list":
-                self._json({"ok": True, "tools": self.server.registry.list_tools()})
+                self._json({"ok": True, "tools": self.server.services.list_tools(self.server.registry)})
                 return
             tool_name, arguments, metadata = _parse_mcp_payload(payload)
             result = asyncio.run(
@@ -187,7 +198,7 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
                 request_id,
                 {
                     "protocolVersion": "2024-11-05",
-                    "capabilities": {"tools": {"listChanged": False}},
+                    "capabilities": {"tools": {"listChanged": True}},
                     "serverInfo": {
                         "name": self.server.services.config.server.get("name", "home"),
                         "version": str(self.server.services.config.server.get("version", "0.2.2")),
@@ -197,7 +208,7 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
         if method == "ping":
             return _jsonrpc_result(request_id, {})
         if method == "tools/list":
-            return _jsonrpc_result(request_id, {"tools": _mcp_tools(self.server.registry.list_tools())})
+            return _jsonrpc_result(request_id, {"tools": _mcp_tools(self.server.services.list_tools(self.server.registry))})
         if method == "tools/call":
             params = payload.get("params", {}) if isinstance(payload.get("params"), dict) else {}
             result = await self.server.dispatcher.dispatch(

@@ -67,7 +67,9 @@ $env:HOME_MCP_DEV_MODE = "true"
 python -m app.main
 ```
 
-`HOME_MCP_DEV_MODE=true` 允许直接进入 WebUI，免去管理登录；MCP 调用仍使用各 caller 的认证和权限规则。普通模式设置 `HOME_MCP_LOGIN_KEY` 并关闭 dev 模式。模块开关和 agent 变更后需要重启；已启用的远程生图工具切换模型时立即使用新的选择。
+`HOME_MCP_DEV_MODE=true` 允许直接进入 WebUI，免去管理登录；MCP 调用仍使用各 caller 的认证和权限规则。普通模式设置 `HOME_MCP_LOGIN_KEY` 并关闭 dev 模式。额度、周期、并发、权限、文件、agent 与工具参数保存后立即生效；只有模块开关变化需要重启。
+
+WebUI 的「全局设置」可管理每位调用者的生图/语音/打印额度、计数周期、并发、文件有效期和 MCP 权限。默认生图周期为 86400 秒（24 小时），次数和周期均可调整；额度或并发填写 0 表示不限。各模块的「参数与限制」还提供图片编辑上限、下载域名、ComfyUI 预设、语音选项和打印默认值。正在执行的任务继续使用原配置，内存额度计数在重启后清零。
 
 默认路径是 Docker Compose；本地 Python 运行主要用于开发。
 

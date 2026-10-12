@@ -32,6 +32,7 @@ def build_image_edit_input_schema(image_config: dict[str, Any] | None = None) ->
                 "type": "array",
                 "items": {"type": "string", "minLength": 1},
                 "minItems": 1,
+                "maxItems": int((image_config or {}).get("max_edit_input_images", 4)),
             },
         }
     )
@@ -47,17 +48,17 @@ def _image_input_schema(image_config: dict[str, Any]) -> dict[str, Any]:
             "size": {
                 "type": "string",
                 "enum": _enum_with_auto(_configured_strings(image_config, "allowed_sizes", DEFAULT_IMAGE_SIZES)),
-                "default": "auto",
+                "default": image_config.get("default_size", "auto"),
             },
             "quality": {
                 "type": "string",
                 "enum": _configured_strings(image_config, "allowed_qualities", DEFAULT_IMAGE_QUALITIES),
-                "default": "auto",
+                "default": image_config.get("default_quality", "auto"),
             },
             "output_format": {
                 "type": "string",
                 "enum": _configured_strings(image_config, "allowed_output_formats", DEFAULT_IMAGE_OUTPUT_FORMATS),
-                "default": "png",
+                "default": image_config.get("default_output_format", "png"),
             },
             "n": {"type": "integer"},
         },

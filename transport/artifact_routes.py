@@ -9,18 +9,19 @@ from transport.request_context import CoreServices
 
 
 def serve_artifact(handler, services: CoreServices, artifact_id: str, query: str = "") -> None:
+    runtime = services.snapshot()
     authorization = handler.headers.get("Authorization")
     try:
         artifact_id = unquote(artifact_id)
         if authorization:
-            caller = services.policy.resolve_caller(authorization, remote_addr=handler.client_address[0])
-            artifact = services.artifacts.get(artifact_id, caller)
+            caller = runtime.policy.resolve_caller(authorization, remote_addr=handler.client_address[0])
+            artifact = runtime.artifacts.get(artifact_id, caller)
         else:
             params = parse_qs(query)
             expires = (params.get("expires") or [""])[0]
             signature = (params.get("signature") or [""])[0]
-            artifact = services.artifacts.get_with_download_signature(artifact_id, expires, signature)
-        path = services.artifacts.safe_path(artifact)
+            artifact = runtime.artifacts.get_with_download_signature(artifact_id, expires, signature)
+        path = runtime.artifacts.safe_path(artifact)
         handler.send_response(HTTPStatus.OK)
         handler.send_header("Content-Type", artifact.mime_type)
         handler.send_header("Content-Length", str(artifact.size_bytes))

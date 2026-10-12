@@ -43,6 +43,14 @@ class ToolRegistry:
         except KeyError as exc:
             raise GatewayError(INVALID_ARGUMENT, f"unknown tool: {name}") from exc
 
+    def copy(self) -> ToolRegistry:
+        registry = ToolRegistry()
+        registry._tools = self._tools.copy()
+        return registry
+
+    def replace(self, registry: ToolRegistry) -> None:
+        self._tools = registry._tools.copy()
+
     def list_tools(self) -> list[dict[str, Any]]:
         return [
             {

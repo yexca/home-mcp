@@ -61,7 +61,9 @@ $env:HOME_MCP_DEV_MODE = "true"
 python -m app.main
 ```
 
-`HOME_MCP_DEV_MODE=true` opens management without login. MCP caller authentication and policy still apply. Use `HOME_MCP_LOGIN_KEY` with dev mode off for normal operation. Module switches and agent changes require a restart; switching an existing remote image tool's selected model takes effect immediately.
+`HOME_MCP_DEV_MODE=true` opens management without login. MCP caller authentication and policy still apply. Use `HOME_MCP_LOGIN_KEY` with dev mode off for normal operation. Quotas, windows, concurrency, policy, artifacts, agents and tool parameters apply immediately on save. Only module switches require a restart.
+
+The **Settings** page manages image/TTS/print quotas, counting windows, concurrency, artifact expiry and MCP access policy. The default image window is 86400 seconds (24 hours); both quota and window are editable. Zero quota/concurrency values mean unlimited. Module pages expose **Parameters & limits** for image editing/downloads, ComfyUI presets, voice options and print defaults. Running jobs keep their original settings, and in-memory quota counters reset on restart.
 
 The default path is Docker Compose. Use local Python runs for development only.
 

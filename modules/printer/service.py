@@ -57,7 +57,7 @@ class PrinterService:
         ctx.limits.check(
             f"printer_print_file:{ctx.caller.caller_id}:day",
             limit=int(ctx.config.limits.get("print_jobs_per_caller_per_day", 20)),
-            window_seconds=24 * 60 * 60,
+            window_seconds=int(ctx.config.limits.get("print_rate_window_seconds", 86400)),
         )
         data = ctx.artifacts.safe_path(artifact).read_bytes()
         response = self.provider.print_file(

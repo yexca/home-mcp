@@ -44,7 +44,9 @@ def build_services(settings: Settings | None = None) -> tuple[CoreServices, Tool
     services = CoreServices(
         config=settings,
         artifacts=ArtifactStore(conn, settings),
-        jobs=JobManager(conn),
+        jobs=JobManager(connect_database(settings.database["path"],
+            wal=bool(settings.database.get("wal", True)),
+            busy_timeout_ms=int(settings.database.get("busy_timeout_ms", 5000)))),
         policy=PolicyEngine(settings),
         audit=AuditLogger(conn, settings),
         limits=InMemoryRateLimiter(),
@@ -54,6 +56,7 @@ def build_services(settings: Settings | None = None) -> tuple[CoreServices, Tool
     registry = ToolRegistry()
     register_builtin_tools(registry)
     register_configured_module_tools(registry, settings)
+    services.registry = registry
     run_configured_module_startup_hooks(services, settings)
     dispatcher = ToolDispatcher(registry, services)
     return services, registry, dispatcher

@@ -91,6 +91,22 @@ class ManagementTests(unittest.TestCase):
             self.assertEqual(self.api("/admin/api/status", key=None, headers={"Origin": "https://other.example"})[0], 403)
             self.assertEqual(self.services.policy.resolve_caller(None).caller_id, "anonymous")
 
+    def test_operational_controls_save_through_http_without_restart(self):
+        status = self.api("/admin/api/status")[1]
+        self.assertIn("IMAGE_JOBS_PER_CALLER_PER_DAY", status["settings_schema"])
+        self.assertEqual(status["local_env"]["IMAGE_RATE_WINDOW_SECONDS"], "86400")
+        code, result = self.api("/admin/api/config", {"owned_fields": {
+            "IMAGE_JOBS_PER_CALLER_PER_DAY": "60", "IMAGE_RATE_WINDOW_SECONDS": "3600",
+            "IMAGE_ALLOW_HTTP_IMAGE_URLS": "false", "LOCAL_IMAGE_STYLE_PRESETS": "{}",
+        }})
+        self.assertEqual(code, 200, result)
+        self.assertEqual(self.services.config.limits["image_jobs_per_caller_per_day"], 60)
+        status = self.api("/admin/api/status")[1]
+        self.assertEqual(status["local_env"]["IMAGE_JOBS_PER_CALLER_PER_DAY"], "60")
+        self.assertEqual(status["local_env"]["LOCAL_IMAGE_STYLE_PRESETS"], "{}")
+        self.assertFalse(status["restart_required"])
+        self.assertEqual(self.api("/admin/api/config", {"owned_fields": {"IMAGE_JOBS_PER_CALLER_PER_DAY": "-1"}})[0], 400)
+
     def test_fetch_models_and_preserve_keys_without_returning_them(self):
         remote = ThreadingHTTPServer(("127.0.0.1", 0), ModelEndpoint)
         remote.received = []

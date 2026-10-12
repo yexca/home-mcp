@@ -57,7 +57,7 @@ Log in with the key in `HOME_MCP_LOGIN_KEY`. This key is independent of MCP call
 
 For local development, set `$env:HOME_MCP_DEV_MODE = "true"` before starting the server. This bypasses WebUI management login; MCP caller authentication and policy continue to apply. With dev mode off and no login key configured, management APIs are unavailable.
 
-Restart the service after changing module switches or agent settings so tool registration is refreshed.
+Settings and agent changes apply immediately. Restart only after changing module switches so tool registration is refreshed.
 
 ## LLM Management And Remote Image
 
@@ -108,6 +108,14 @@ modules:
 ```
 
 Then create or edit each `config/agent/config.agent.<name>.yaml` and fill `caller.token` plus `matrix.access_token` if that agent sends Matrix messages.
+
+## Quotas and operational settings
+
+Open **Settings** in the WebUI for image, speech and print quotas, counting windows, concurrency, artifact expiry/size and MCP access policy. The default image window is **86400 seconds (24 hours)**; its quota and window can both be changed. Setting a quota or concurrency limit to **0** disables that limit. Image generation, image editing and local generation have separate quota counters; concurrency is shared across image tools. Counters reset when the service restarts.
+
+Each module also has **Parameters & limits** for image editing/downloads, ComfyUI presets, TTS voices/languages/speed, Matrix MIME types and print options. Lists accept one value per line. Keep secret inputs blank to preserve their existing value.
+
+Saving immediately applies quotas, policy and tool parameters, including updated MCP schemas. Running jobs keep their original configuration. Only module enable/disable switches require a restart, and the header indicates these pending changes. Artifact expiry settings apply to newly created files and do not delete files automatically.
 
 ## Advanced YAML Override
 

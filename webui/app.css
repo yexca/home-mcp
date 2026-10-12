@@ -674,6 +674,36 @@ button.danger {
   backdrop-filter: blur(8px);
 }
 
+.settings-panel {
+  padding: 20px;
+  margin-top: 14px;
+}
+
+.settings-panel summary {
+  cursor: pointer;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.settings-description,
+.settings-notice {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.json-field {
+  grid-column: 1 / -1;
+}
+
+.json-field textarea {
+  min-height: 180px;
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.settings-panel .field small:empty {
+  display: none;
+}
+
 .matrix-layout {
   display: grid;
   grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.1fr);

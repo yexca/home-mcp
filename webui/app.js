@@ -1,4 +1,4 @@
-const MODULE_IDS = ["dashboard", "llm", "image", "localimage", "tts", "matrix", "printer"];
+const MODULE_IDS = ["dashboard", "settings", "llm", "image", "localimage", "tts", "matrix", "printer"];
 
 const MODULE_SWITCHES = {
   image: "IMAGE_MODULE_ENABLED",
@@ -86,7 +86,7 @@ const MODULE_REQUIRED_FIELDS = {
   image: ["IMAGE_MODEL_ID"],
   localimage: [
     "LOCAL_IMAGE_COMFYUI_BASE_URL",
-    "LOCAL_IMAGE_COMFYUI_ALLOWED_HOST",
+    "LOCAL_IMAGE_COMFYUI_ALLOWED_HOSTS",
     "LOCAL_IMAGE_COMFYUI_WORKFLOW_PATH",
     "LOCAL_IMAGE_DEFAULT_SIZE",
     "LOCAL_IMAGE_DEFAULT_QUALITY",
@@ -106,7 +106,7 @@ const STRINGS = {
     connect: "连接",
     adminToken: "登录密钥",
     adminTokenPlaceholder: "HOME_MCP_LOGIN_KEY 环境变量配置的密钥",
-    footerHint: "保存后如模块开关变化，需要重启服务重新注册工具。",
+    footerHint: "额度、权限、文件和工具参数保存后立即生效；仅模块开关需要重启服务。",
     themeSystem: "跟随系统",
     themeLight: "日间",
     themeDark: "夜间",
@@ -120,7 +120,7 @@ const STRINGS = {
     fillRequired: "请先补齐带 * 的必填项。",
     requiredMissing: "当前有必填项未填写，请填写相关配置后再尝试。",
     savedWithDisabledModules: "当前有必填项未填写，已保存当前内容，但未开启配置不完整的模块。",
-    saved: "已保存 WebUI 配置。模块注册和 agent 变更需要重启服务后完全生效。",
+    saved: "已保存配置，立即生效。模块开关变化需要重启服务。",
     agentNamePrompt: "请输入 agent 名称，只能包含字母、数字、下划线和连字符。",
     agentNameInvalid: "agent 名称只能包含字母、数字、下划线和连字符。",
     sharedArtifactRead: "共享 artifact 读取",
@@ -136,6 +136,7 @@ const STRINGS = {
     noAgentBody: "点击上方 + 输入名称后创建 Matrix agent 配置。",
     modules: {
       dashboard: { label: "Dashboard", title: "控制台", kicker: "Overview" },
+      settings: { label: "全局设置", title: "额度与全局设置", kicker: "Limits & Settings" },
       llm: { label: "LLM 管理", title: "模型管理", kicker: "Providers & Models" },
       image: { label: "远程生图", title: "远程生图配置", kicker: "OpenAI-compatible" },
       localimage: { label: "本地生图", title: "本地生图配置", kicker: "ComfyUI" },
@@ -215,7 +216,7 @@ const STRINGS = {
     connect: "Connect",
     adminToken: "Login key",
     adminTokenPlaceholder: "Key configured in HOME_MCP_LOGIN_KEY",
-    footerHint: "Restart the service after module switch changes so tools can be registered again.",
+    footerHint: "Quotas, permissions, artifacts and tool parameters apply on save. Only module switches require restart.",
     themeSystem: "System",
     themeLight: "Light",
     themeDark: "Dark",
@@ -229,7 +230,7 @@ const STRINGS = {
     fillRequired: "Please fill the required fields marked with *.",
     requiredMissing: "Required fields are missing. Fill the related config, then try again.",
     savedWithDisabledModules: "Required fields are missing. Saved the current values, but left incomplete modules disabled.",
-    saved: "Saved WebUI config. Restart the service for module registration and agent changes to fully apply.",
+    saved: "Configuration saved and applied immediately. Module switch changes require restart.",
     agentNamePrompt: "Enter an agent name. Use only letters, numbers, underscores, and hyphens.",
     agentNameInvalid: "Agent names may contain only letters, numbers, underscores, and hyphens.",
     sharedArtifactRead: "Shared artifact read",
@@ -245,6 +246,7 @@ const STRINGS = {
     noAgentBody: "Click + above, enter a name, then create a Matrix agent config.",
     modules: {
       dashboard: { label: "Dashboard", title: "Dashboard", kicker: "Overview" },
+      settings: { label: "Settings", title: "Limits & Global Settings", kicker: "Limits & Settings" },
       llm: { label: "LLM Management", title: "Model Management", kicker: "Providers & Models" },
       image: { label: "Remote Image", title: "Remote Image Config", kicker: "OpenAI-compatible" },
       localimage: { label: "Local Image", title: "Local Image Config", kicker: "ComfyUI" },
@@ -358,12 +360,7 @@ function moduleText(moduleId) {
 function getValues() {
   const owned = lastStatus?.webui?.owned_fields || {};
   const local = lastStatus?.local_env || {};
-  const values = { ...local, ...owned };
-  document.querySelectorAll("#configForm input[name], #configForm textarea[name], #configForm select[name]").forEach((input) => {
-    if (input.type === "password" && !input.value.trim()) return;
-    values[input.name] = input.type === "checkbox" ? (input.checked ? "true" : "false") : input.value.trim();
-  });
-  return values;
+  return { ...local, ...owned };
 }
 
 function getValue(name) {
@@ -503,6 +500,7 @@ function renderPage() {
     return;
   }
   if (currentPage === "dashboard") renderDashboard(mount);
+  if (currentPage === "settings") renderSettingsPage(mount);
   if (currentPage === "llm") renderLLMPage(mount);
   if (currentPage === "image") renderModulePage(mount, "image", [
     "IMAGE_MODEL_ID",
@@ -591,8 +589,33 @@ function renderModulePage(mount, moduleId, fields) {
         ${fields.map((name) => field(name)).join("")}
       </div>
     </section>
+    ${operationalFields(moduleId)}
     ${actionBar(t("module.save"))}
   `;
+}
+
+function settingsGroup(group, title, description, collapsed = false) {
+  const fields = Object.entries(lastStatus.settings_schema || {}).filter(([name, spec]) => spec.group === group && name !== "LOCAL_IMAGE_COMFYUI_ALLOWED_HOSTS");
+  if (!fields.length) return "";
+  const content = `<div class="form-grid">${fields.map(([name]) => field(name)).join("")}</div>`;
+  return collapsed
+    ? `<details class="panel settings-panel"><summary>${escapeHtml(title)}</summary><p class="settings-description">${escapeHtml(description)}</p>${content}</details>`
+    : `<section class="panel settings-panel"><div class="panel-heading"><div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p></div></div>${content}</section>`;
+}
+
+function renderSettingsPage(mount) {
+  mount.innerHTML = `
+    <p class="settings-notice">${llmText("保存到 SQLite 后立即生效，正在执行的任务继续使用原配置。额度填写 0 表示不限次数。", "Saved to SQLite and applied immediately. Running jobs keep their original settings. A quota of 0 means unlimited.")}</p>
+    ${settingsGroup("quotas", llmText("调用额度与并发", "Quotas & concurrency"), llmText("分别设置每位调用者的额度、计数周期与同时执行的任务数量。", "Configure per-caller quotas, counting windows and concurrent jobs."))}
+    ${settingsGroup("storage", llmText("文件与审计", "Artifacts & audit"), llmText("管理文件访问链接、大小和新文件的有效期。", "Manage download links, size limits and expiry for new artifacts."), true)}
+    ${settingsGroup("policy", llmText("MCP 权限与调用者", "MCP permissions & callers"), llmText("MCP 认证独立于 WebUI 登录。登录密钥与开发模式仍通过环境变量配置。", "MCP authentication is separate from WebUI login. The login key and development mode are configured through environment variables."), true)}
+    ${actionBar(llmText("保存全局设置", "Save global settings"))}`;
+}
+
+function operationalFields(moduleId) {
+  return `<p class="settings-notice"><a href="#settings">${llmText("调用额度、计数周期与并发上限 → 全局设置", "Quotas, counting windows & concurrency → Settings")}</a></p>` + settingsGroup(moduleId,
+    llmText("参数与限制", "Parameters & limits"),
+    llmText("保存后立即生效，工具参数列表同步更新。列表每行一个值；JSON 用于配置工作流预设。", "Saving immediately updates controls and tool schemas. Lists accept one value per line; JSON configures workflow presets."), true);
 }
 
 function renderLLMPage(mount) {
@@ -728,7 +751,7 @@ function renderLocalImagePage(mount) {
   const workflow = WORKFLOWS[selected];
   const baseFields = [
     "LOCAL_IMAGE_COMFYUI_BASE_URL",
-    "LOCAL_IMAGE_COMFYUI_ALLOWED_HOST",
+    "LOCAL_IMAGE_COMFYUI_ALLOWED_HOSTS",
     "LOCAL_IMAGE_COMFYUI_WORKFLOW_PATH",
     "LOCAL_IMAGE_DEFAULT_SIZE",
     "LOCAL_IMAGE_DEFAULT_QUALITY",
@@ -768,6 +791,7 @@ function renderLocalImagePage(mount) {
         </div>
       </details>
     </section>
+    ${operationalFields("localimage")}
     ${actionBar(t("localimage.save"))}
   `;
 }
@@ -807,6 +831,7 @@ function renderMatrixPage(mount) {
         </div>
       </article>
     </section>
+    ${operationalFields("matrix")}
     ${actionBar(t("matrix.save"))}
   `;
 }
@@ -845,14 +870,19 @@ function field(name, options = {}) {
         ${models.map((model) => `<option value="${escapeAttr(model.id)}" ${model.id === selected ? "selected" : ""}>${escapeHtml(model.providerName)} / ${escapeHtml(model.model_id)}</option>`).join("")}
       </select><small><a href="#llm">${llmText("前往 LLM 管理添加或标记 image 模型", "Add or tag image models in LLM Management")}</a></small></label>`;
   }
-  const meta = FIELD_META[name] || { label: name };
-  const label = meta.label?.startsWith("field.") ? t(meta.label) : meta.label || name;
-  const visuallyRequired = options.required ?? !!meta.requiredWhen;
-  const enforceRequired = options.enforceRequired ?? (meta.requiredWhen ? moduleEnabled(meta.requiredWhen) : visuallyRequired);
+  const spec = lastStatus?.settings_schema?.[name];
+  const meta = spec ? { ...spec, secret: spec.type === "secret", multiline: ["list", "json"].includes(spec.type), type: ["integer", "number"].includes(spec.type) ? "number" : "text" } : (FIELD_META[name] || { label: name });
+  const label = spec ? llmText(spec.zh, spec.en) : (meta.label?.startsWith("field.") ? t(meta.label) : meta.label || name);
+  const requiredWhen = meta.requiredWhen || (name === "LOCAL_IMAGE_COMFYUI_ALLOWED_HOSTS" ? "localimage" : null);
+  const visuallyRequired = options.required ?? !!requiredWhen;
+  const enforceRequired = options.enforceRequired ?? (requiredWhen ? moduleEnabled(requiredWhen) : visuallyRequired);
   const value = getValue(name);
   const secretValue = meta.secret && value;
   const inputType = meta.secret ? "password" : meta.type || "text";
-  const control = meta.multiline
+  const bounds = meta.type === "number" ? `min="${meta.minimum ?? 1}" step="${spec?.type === 'integer' ? '1' : 'any'}"` : "";
+  const control = spec?.type === "boolean"
+    ? `<input name="${name}" type="checkbox" ${normalizeBool(value) ? "checked" : ""} />`
+    : meta.multiline
     ? `<textarea
         name="${name}"
         ${enforceRequired ? "required" : ""}
@@ -861,15 +891,16 @@ function field(name, options = {}) {
     : `<input
         name="${name}"
         type="${inputType}"
+        ${bounds}
         ${enforceRequired ? "required" : ""}
         value="${secretValue ? "" : escapeAttr(value)}"
         placeholder="${secretValue ? t("configuredReplace") : escapeAttr(meta.placeholder || "")}"
       />`;
   return `
-    <label class="field ${visuallyRequired ? "required" : ""}">
+    <label class="field ${visuallyRequired ? "required" : ""} ${spec?.type === "boolean" ? "inline-check" : ""} ${spec?.type === "json" ? "json-field" : ""}">
       <span>${label}${visuallyRequired ? " <b>*</b>" : ""}</span>
       ${control}
-      <small>${name}</small>
+      <small>${escapeHtml(spec ? (llmText(spec.help_zh, spec.help_en) || (spec.type === "list" ? llmText("每行一个值。", "One value per line.") : "")) : name)}</small>
     </label>
   `;
 }
@@ -889,9 +920,14 @@ function agentPanel(agent) {
           <span>${t("agentEnabled")}</span>
           <input type="checkbox" data-agent-field="enabled" ${agent.enabled ? "checked" : ""} />
         </label>
+        <label class="field"><span>${llmText("调用者角色", "Caller role")}</span>
+          <select data-agent-field="caller.role"><option value="role_play" ${agent.caller.role === "role_play" ? "selected" : ""}>role_play</option><option value="admin" ${agent.caller.role === "admin" ? "selected" : ""}>admin</option></select>
+        </label>
         ${agentField("Gateway Token", "caller.gateway_token", agent.caller.gateway_token_configured, true, agent.enabled)}
-        ${agentField("Matrix Access Token", "matrix.access_token", agent.matrix.access_token_configured, true, agent.enabled)}
-        ${agentTextField("Matrix Account", "matrix.account", agent.matrix.account || agent.name, true, agent.enabled)}
+        <label class="field inline-check"><span>${llmText("使用 Matrix 发送账号", "Use Matrix sender account")}</span><input type="checkbox" data-agent-field="matrix.enabled" ${agent.matrix.enabled ? "checked" : ""} /></label>
+        ${agentField("Matrix Access Token", "matrix.access_token", agent.matrix.access_token_configured, true, agent.enabled && agent.matrix.enabled)}
+        ${agentTextField("Matrix Account", "matrix.account", agent.matrix.account || agent.name, true, agent.enabled && agent.matrix.enabled)}
+        ${agentTextField(llmText("账号专用 Homeserver（留空使用模块地址）", "Account homeserver (blank uses module URL)"), "matrix.homeserver", agent.matrix.homeserver || "", false, false)}
         <label class="field inline-check">
           <span>${t("sharedArtifactRead")}</span>
           <input type="checkbox" data-agent-field="caller.shared_artifact_read" ${agent.caller.shared_artifact_read ? "checked" : ""} />
@@ -899,7 +935,7 @@ function agentPanel(agent) {
       </div>
       <div class="tool-checks">
         <strong>${t("highRiskTools")}</strong>
-        ${["matrix_send_text", "matrix_send_image", "matrix_send_audio"].map((tool) => `
+        ${["matrix_send_text", "matrix_send_image", "matrix_send_audio", "printer_print_file"].map((tool) => `
           <label>
             <input type="checkbox" data-tool="${tool}" ${agent.high_risk_tools.includes(tool) ? "checked" : ""} />
             <span>${tool}</span>
@@ -971,9 +1007,12 @@ function attachDynamicHandlers() {
   document.querySelectorAll("[name], textarea[name]").forEach((input) => {
     input.addEventListener("input", () => {
       input.classList.toggle("invalid", input.required && !input.value.trim());
-      if (input.name === "IMAGE_MODEL_ID") updateLocalField(input.name, input.value);
+      if (input.closest("#configForm") && input.name && !(input.type === "password" && !input.value.trim())) {
+        updateLocalField(input.name, input.type === "checkbox" ? (input.checked ? "true" : "false") : input.value.trim());
+      }
     });
     input.addEventListener("change", () => {
+      if (input.closest("#configForm") && input.type === "checkbox" && input.name) updateLocalField(input.name, input.checked ? "true" : "false");
       if (Object.values(MODULE_SWITCHES).includes(input.name)) {
         const moduleId = moduleIdForSwitch(input.name);
         if (input.checked && moduleId && requiredMissing(moduleId).length) {
@@ -1017,6 +1056,7 @@ function attachDynamicHandlers() {
         }
       }
       saveActiveAgentDraft();
+      if (input.dataset.agentField === "matrix.enabled") renderPage();
     });
   });
 }
@@ -1165,14 +1205,14 @@ function moduleIdForSwitch(name) {
 }
 
 function matrixHasToken() {
-  return draftAgents.some((agent) => agent.enabled && (agent.matrix.access_token_configured || String(agent.matrix.access_token || "").trim()));
+  return !!getValue("MATRIX_ACCESS_TOKEN") || draftAgents.some((agent) => agent.enabled && agent.matrix.enabled && (agent.matrix.access_token_configured || String(agent.matrix.access_token || "").trim()));
 }
 
 function agentMissing(agent) {
   const missing = [];
   if (!agent.caller.gateway_token_configured && !String(agent.caller.gateway_token || "").trim()) missing.push("Gateway Token");
-  if (!agent.matrix.access_token_configured && !String(agent.matrix.access_token || "").trim()) missing.push("Matrix Access Token");
-  if (!String(agent.matrix.account || "").trim()) missing.push("Matrix Account");
+  if (agent.matrix.enabled && !agent.matrix.access_token_configured && !String(agent.matrix.access_token || "").trim()) missing.push("Matrix Access Token");
+  if (agent.matrix.enabled && !String(agent.matrix.account || "").trim()) missing.push("Matrix Account");
   return missing;
 }
 
@@ -1195,6 +1235,7 @@ function normalizeAgents(agents) {
     matrix: {
       enabled: agent.matrix?.enabled !== false,
       account: agent.matrix?.account || agent.name,
+      homeserver: agent.matrix?.homeserver || "",
       access_token_configured: !!agent.matrix?.access_token_configured,
       access_token: "",
     },

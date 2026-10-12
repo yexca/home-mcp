@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -11,7 +12,8 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Any, Callable
 
-from app.config import Settings
+from app.config import Settings, _deep_fill_defaults, _validate
+from app.settings_catalog import FIELDS as EXTRA_FIELDS, parse_field, validate_config
 from transport.request_context import CoreServices
 
 
@@ -23,15 +25,17 @@ WEBUI_MIME_TYPES = {
 }
 USER_CONFIG_PATH = Path("config/config.yaml")
 DEFAULT_AGENT_CONFIG_DIR = Path("config/agent")
-MATRIX_TOOLS = ("matrix_send_text", "matrix_send_image", "matrix_send_audio")
+HIGH_RISK_TOOLS = ("matrix_send_text", "matrix_send_image", "matrix_send_audio", "printer_print_file")
 SECRET_ENV_RE = re.compile(r"(TOKEN|KEY|SECRET|PASSWORD)", re.IGNORECASE)
 
 
 def _number(value: str) -> int | float:
     stripped = value.strip()
     if not stripped:
-        return ""
+        raise ValueError("A numeric value is required")
     parsed = float(stripped)
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise ValueError("Numeric limits and timeouts must be finite and greater than zero")
     return int(parsed) if parsed.is_integer() else parsed
 
 
@@ -109,6 +113,9 @@ FIELD_PATHS: dict[str, tuple[tuple[str, ...], Callable[[str], Any]]] = {
     "PRINTER_MAX_FILE_BYTES": (("modules", "printer", "max_file_bytes"), _number),
     "PRINTER_BRIDGE_TIMEOUT_SECONDS": (("modules", "printer", "bridge_http", "timeout_seconds"), _number),
 }
+FIELD_PATHS.update({name: (tuple(spec["path"]), lambda value, name=name: parse_field(name, value)) for name, spec in EXTRA_FIELDS.items()})
+# The complete ComfyUI host list replaces the old first-host-only editor.
+FIELD_PATHS.pop("LOCAL_IMAGE_COMFYUI_ALLOWED_HOST")
 
 
 def serve_webui(handler, path: str) -> None:
@@ -166,6 +173,7 @@ def handle_admin_get(handler, services: CoreServices, path: str) -> None:
                     "owned_fields": {},
                 },
                 "local_env": mask_secret_fields(config_values),
+                "settings_schema": EXTRA_FIELDS,
                 "agents": _agent_status(status_config),
                 "environment": _environment_status(status_config),
                 "llm": services.llm.catalog(),
@@ -210,6 +218,7 @@ def _save_management_config(services: CoreServices, payload: dict[str, Any]) -> 
     agents = payload.get("agents")
     agent_result = _prepare_agent_configs(agents, status_config) if agents is not None else None
     candidate_config = _candidate_save_config(status_config, owned_fields, agent_result)
+    validate_config(candidate_config)
     _validate_enabled_module_requirements(candidate_config)
     image = candidate_config.get("modules", {}).get("image", {})
     if image.get("model_id"):
@@ -219,9 +228,14 @@ def _save_management_config(services: CoreServices, payload: dict[str, Any]) -> 
     else:
         for field in ("base_url", "model", "api_key"):
             image.get("openai_compatible", {}).pop(field, None)
+    _validate(candidate_config)
+    runtime = deepcopy(candidate_config)
+    # Preserve the startup tool set. All other controls and schemas are published together.
+    for name, spec in runtime.get("modules", {}).items():
+        spec["enabled"] = bool(services.config.modules.get(name, {}).get("enabled", False))
+    prepared = services.prepare_runtime(Settings(runtime))
     services.management.save(candidate_config)
-    # Existing image tools pick up new selections immediately; registration still requires a restart.
-    _replace_runtime_image(services, image)
+    services.apply_runtime(prepared)
     return {
         "path": services.config.database["path"],
         "storage": "sqlite",
@@ -272,7 +286,10 @@ def _json(handler, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) 
 
 
 def _management_status(services: CoreServices) -> dict[str, Any]:
-    config = services.management.load() or deepcopy(services.config.raw)
+    config = _deep_fill_defaults(services.management.load() or {}, services.config.raw)
+    for spec in EXTRA_FIELDS.values():
+        if "default" in spec and _get_nested(config, tuple(spec["path"])) is None:
+            _set_nested(config, tuple(spec["path"]), deepcopy(spec["default"]))
     image = config.get("modules", {}).get("image", {})
     if image.get("model_id"):
         image.setdefault("openai_compatible", {}).update(services.llm.resolve_image(image["model_id"]))
@@ -306,15 +323,16 @@ def _replace_runtime_image(services: CoreServices, image: dict[str, Any]) -> Non
     # enabled reflects the tool set registered at startup, until the next restart.
     replacement["enabled"] = bool(services.config.modules.get("image", {}).get("enabled", False))
     runtime.setdefault("modules", {})["image"] = replacement
-    services.config = Settings(runtime)
+    services.apply_runtime(services.prepare_runtime(Settings(runtime)))
 
 
 def _restart_required(services: CoreServices, saved: dict[str, Any]) -> bool:
-    modules = saved.get("modules", {})
-    return any(
-        bool(modules.get(name, {}).get("enabled", False)) != bool(services.config.modules.get(name, {}).get("enabled", False))
-        for name in set(modules) | set(services.config.modules)
-    )
+    for name, (path, _) in FIELD_PATHS.items():
+        spec = EXTRA_FIELDS.get(name, {})
+        default = spec.get("default")
+        if _get_nested(saved, path) != (_get_nested(services.config.raw, path) if _get_nested(services.config.raw, path) is not None else default):
+            return True
+    return any(saved.get(key) != services.config.raw.get(key) for key in ("_agent_fragments", "agents"))
 
 
 def _config_field_values(config: dict[str, Any]) -> dict[str, str]:
@@ -323,6 +341,8 @@ def _config_field_values(config: dict[str, Any]) -> dict[str, str]:
         value = _get_nested(config, path)
         if isinstance(value, bool):
             values[name] = "true" if value else "false"
+        elif isinstance(value, dict):
+            values[name] = json.dumps(value, ensure_ascii=False, indent=2)
         elif isinstance(value, list):
             values[name] = "\n".join(str(item) for item in value)
         elif value is None:
@@ -417,6 +437,8 @@ def _apply_config_fields(config: dict[str, Any], raw_fields: dict[str, Any]) -> 
             continue
         path, parser = FIELD_PATHS[name]
         value = parser(str(raw_value))
+        if parser is _number and path[-1] != "poll_interval_seconds" and not float(value).is_integer():
+            raise ValueError(f"{name}: must be an integer")
         _set_nested(config, path, value)
 
 
@@ -476,7 +498,7 @@ def _normalize_agent(raw_agent: Any) -> dict[str, Any]:
     high_risk_tools = raw_agent.get("high_risk_tools", [])
     if not isinstance(high_risk_tools, list):
         high_risk_tools = []
-    tools = [tool for tool in high_risk_tools if tool in MATRIX_TOOLS]
+    tools = [tool for tool in high_risk_tools if tool in HIGH_RISK_TOOLS]
     return {
         "name": name,
         "enabled": bool(raw_agent.get("enabled", True)),

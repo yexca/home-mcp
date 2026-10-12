@@ -30,6 +30,11 @@ limits:
   image_jobs_per_caller_per_day: 20
   tts_jobs_per_caller_per_day: 100
   print_jobs_per_caller_per_day: 20
+  # Fixed windows start with the first request. 0 request/concurrency limits mean unlimited.
+  image_rate_window_seconds: 86400
+  tts_rate_window_seconds: 86400
+  print_rate_window_seconds: 86400
+  matrix_rate_window_seconds: 60
   max_image_jobs_global: 2
   max_image_jobs_per_caller: 1
   max_tts_jobs_global: 2
@@ -214,6 +219,8 @@ modules:
     enabled: false
     provider: openai_compatible
     default_size: auto
+    default_quality: auto
+    default_output_format: png
     allowed_sizes:
       - 1024x1024
       - 1024x1536
@@ -254,6 +261,7 @@ modules:
       timeout_seconds: 1000
       # Hosts that may appear in provider response image URLs. Keep this
       # explicit and include CDN/image hosts, not only the provider API host.
+      # Use '*' to allow every host, including redirects.
       allowed_image_url_hosts:
         - img.opcheiben.cn
   tts:

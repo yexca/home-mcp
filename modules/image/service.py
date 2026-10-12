@@ -119,17 +119,17 @@ def prepare_image_generate(arguments: dict[str, Any], ctx: RequestContext) -> Pr
     n = int(arguments.get("n", 1))
     if n != 1:
         raise GatewayError(INVALID_ARGUMENT, "n must be 1 for image_generate")
-    size = _validated_size(arguments.get("size", "auto"), image_config)
-    quality = _validated_member(arguments.get("quality", "auto"), image_config.get("allowed_qualities", ["auto"]), "quality")
+    size = _validated_size(arguments.get("size", image_config.get("default_size", "auto")), image_config)
+    quality = _validated_member(arguments.get("quality", image_config.get("default_quality", "auto")), image_config.get("allowed_qualities", ["auto"]), "quality")
     output_format = _validated_member(
-        arguments.get("output_format", "png"),
+        arguments.get("output_format", image_config.get("default_output_format", "png")),
         image_config.get("allowed_output_formats", ["png", "jpeg", "webp"]),
         "output_format",
     )
     ctx.limits.check(
         f"image_generate:{ctx.caller.caller_id}:day",
         limit=int(ctx.config.limits.get("image_jobs_per_caller_per_day", 20)),
-        window_seconds=24 * 60 * 60,
+        window_seconds=int(ctx.config.limits.get("image_rate_window_seconds", 86400)),
     )
     return PreparedImageGenerate(
         prompt=prompt,
@@ -147,10 +147,10 @@ class ImageGenerationService(_ImageGenerationBase):
         n = int(arguments.get("n", 1))
         if n != 1:
             raise GatewayError(INVALID_ARGUMENT, "n must be 1 for image_edit")
-        size = _validated_size(arguments.get("size", "auto"), image_config)
-        quality = _validated_member(arguments.get("quality", "auto"), image_config.get("allowed_qualities", ["auto"]), "quality")
+        size = _validated_size(arguments.get("size", image_config.get("default_size", "auto")), image_config)
+        quality = _validated_member(arguments.get("quality", image_config.get("default_quality", "auto")), image_config.get("allowed_qualities", ["auto"]), "quality")
         output_format = _validated_member(
-            arguments.get("output_format", "png"),
+            arguments.get("output_format", image_config.get("default_output_format", "png")),
             image_config.get("allowed_output_formats", ["png", "jpeg", "webp"]),
             "output_format",
         )
@@ -160,7 +160,7 @@ class ImageGenerationService(_ImageGenerationBase):
         ctx.limits.check(
             f"image_edit:{ctx.caller.caller_id}:day",
             limit=int(ctx.config.limits.get("image_jobs_per_caller_per_day", 20)),
-            window_seconds=24 * 60 * 60,
+            window_seconds=int(ctx.config.limits.get("image_rate_window_seconds", 86400)),
         )
         response = self.provider.edit(
             prompt=prompt,
@@ -255,7 +255,7 @@ def _persist_image_outputs(
     )
 
 
-def download_image_url(url: str, image_config: dict[str, Any]) -> DownloadedImage:
+def _validate_download_url(url: str, image_config: dict[str, Any]) -> None:
     parsed = urlparse(url)
     provider_config = image_config.get("openai_compatible", {})
     allow_http = bool(image_config.get("allow_http_image_urls", False))
@@ -263,6 +263,29 @@ def download_image_url(url: str, image_config: dict[str, Any]) -> DownloadedImag
         raise GatewayError(PROVIDER_UNAVAILABLE, "provider image URL scheme is not allowed", retryable=False)
     if not parsed.hostname:
         raise GatewayError(PROVIDER_UNAVAILABLE, "provider image URL has no host", retryable=False)
+    api_host = urlparse(str(provider_config.get("base_url", ""))).hostname
+    hosts = {str(host).lower() for host in provider_config.get("allowed_image_url_hosts", [])}
+    if "*" in hosts:
+        return
+    if api_host:
+        hosts.add(api_host.lower())
+    if parsed.hostname.lower() not in hosts:
+        raise GatewayError(PROVIDER_UNAVAILABLE, "provider image URL host is not allowlisted", retryable=False)
+
+
+class _ImageRedirectHandler(request.HTTPRedirectHandler):
+    def __init__(self, image_config):
+        self.image_config = image_config
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _validate_download_url(newurl, self.image_config)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def download_image_url(url: str, image_config: dict[str, Any]) -> DownloadedImage:
+    _validate_download_url(url, image_config)
+    parsed = urlparse(url)
+    provider_config = image_config.get("openai_compatible", {})
 
     logger.info("provider image URL download started", extra={"source_host": parsed.hostname})
     max_bytes = int(image_config.get("max_download_bytes", 10 * 1024 * 1024))
@@ -275,7 +298,8 @@ def download_image_url(url: str, image_config: dict[str, Any]) -> DownloadedImag
         },
     )
     try:
-        with request.urlopen(req, timeout=int(provider_config.get("timeout_seconds", 60))) as response:
+        opener = request.build_opener(_ImageRedirectHandler(image_config))
+        with opener.open(req, timeout=int(provider_config.get("timeout_seconds", 60))) as response:
             mime_type = _normalize_mime(response.headers.get("Content-Type", ""))
             if mime_type not in EXTENSION_BY_MIME:
                 raise GatewayError(UNSUPPORTED_MEDIA_TYPE, "provider image MIME type is not supported", retryable=False)
