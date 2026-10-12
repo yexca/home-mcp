@@ -173,7 +173,16 @@ class JobManager:
             """,
             (tool_name, stale_before),
         ).fetchall()
-        job_ids = [row["id"] for row in rows]
+        return self._fail_jobs([row["id"] for row in rows], error_code, error_message)
+
+    def mark_abandoned_failed(self, *, error_code: str, error_message: str) -> list[str]:
+        """Fail every unfinished job. Jobs only run inside the gateway process, so none survive a restart."""
+        rows = self.conn.execute(
+            "SELECT id FROM jobs WHERE status NOT IN ('succeeded', 'failed', 'canceled')"
+        ).fetchall()
+        return self._fail_jobs([row["id"] for row in rows], error_code, error_message)
+
+    def _fail_jobs(self, job_ids: list[str], error_code: str, error_message: str) -> list[str]:
         if not job_ids:
             return []
         now = utc_now_iso()

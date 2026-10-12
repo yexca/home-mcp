@@ -10,6 +10,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib import error
 
+from app.main import build_services
 from core.errors import (
     INVALID_ARGUMENT,
     PROVIDER_REJECTED,
@@ -367,6 +368,38 @@ class ImageGenerateServiceTests(unittest.TestCase):
         self.assertEqual(updated.error_code, PROVIDER_TIMEOUT)
         self.assertEqual(audit["status"], "failed")
         self.assertEqual(audit["error_code"], PROVIDER_TIMEOUT)
+
+    def test_restart_fails_abandoned_jobs_and_frees_concurrency_slot(self) -> None:
+        services, _, _ = fresh_image_gateway()
+        self.addCleanup(services.close)
+        limits = {"max_image_jobs_per_caller": 1}
+        job = services.jobs.create(
+            request_id="req_abandoned",
+            caller_id="host_assistant",
+            tool_name="image_edit",
+            input_summary={},
+            limits=limits,
+        )
+        services.jobs.mark_running(job.id)
+        audit_id = services.audit.start(
+            request_id="req_abandoned",
+            job_id=job.id,
+            caller_id="host_assistant",
+            tool_name="image_edit",
+            risk_level="medium",
+            arguments={"prompt": "edit"},
+        )
+
+        restarted, _, _ = build_services(services.config)
+        self.addCleanup(restarted.close)
+        updated = restarted.jobs.get(job.id, CallerIdentity("host_assistant", "admin", True))
+        audit = restarted.artifacts.conn.execute("SELECT status, error_code FROM audit_events WHERE id = ?", (audit_id,)).fetchone()
+
+        self.assertEqual(updated.status, "failed")
+        self.assertEqual(updated.error_code, PROVIDER_TIMEOUT)
+        self.assertEqual(audit["status"], "failed")
+        self.assertEqual(audit["error_code"], PROVIDER_TIMEOUT)
+        restarted.jobs.create(request_id="req_next", caller_id="host_assistant", tool_name="image_edit", input_summary={}, limits=limits)
 
 
 class AsyncProviderHTTPRequestHandler(BaseHTTPRequestHandler):

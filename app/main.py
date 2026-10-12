@@ -4,6 +4,7 @@ from app.config import Settings, load_settings
 from core.artifacts import ArtifactStore
 from core.audit import AuditLogger
 from core.db import connect_database
+from core.errors import PROVIDER_TIMEOUT
 from core.management import ManagementStore
 from core.llm import LLMStore
 from core.jobs import JobManager
@@ -15,6 +16,8 @@ from tools.dispatcher import ToolDispatcher
 from tools.registry import ToolRegistry
 from transport.mcp_server import create_http_server
 from transport.request_context import CoreServices
+
+ABANDONED_JOB_MESSAGE = "job was abandoned during gateway restart"
 
 
 def build_services(settings: Settings | None = None) -> tuple[CoreServices, ToolRegistry, ToolDispatcher]:
@@ -57,6 +60,9 @@ def build_services(settings: Settings | None = None) -> tuple[CoreServices, Tool
     register_builtin_tools(registry)
     register_configured_module_tools(registry, settings)
     services.registry = registry
+    # Unfinished jobs left by the previous process would hold concurrency slots forever.
+    abandoned = services.jobs.mark_abandoned_failed(error_code=PROVIDER_TIMEOUT, error_message=ABANDONED_JOB_MESSAGE)
+    services.audit.fail_started_for_jobs(job_ids=abandoned, error_code=PROVIDER_TIMEOUT, error_message=ABANDONED_JOB_MESSAGE)
     run_configured_module_startup_hooks(services, settings)
     dispatcher = ToolDispatcher(registry, services)
     return services, registry, dispatcher
