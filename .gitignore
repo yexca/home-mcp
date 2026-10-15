@@ -5,6 +5,7 @@ mcp_python_skills/**/__pycache__/
 .mypy_cache/
 .coverage
 .venv/
+node_modules/
 .env
 .env.agent.*
 artifacts/

@@ -59,6 +59,12 @@ For local development, set `$env:HOME_MCP_DEV_MODE = "true"` before starting the
 
 Settings and agent changes apply immediately. Restart only after changing module switches so tool registration is refreshed.
 
+The overview distinguishes running modules from modules enabled in configuration. Open a module card to edit its connection. Configuration drafts stay in memory while switching pages, language, or theme. **Save all changes** saves pending configuration and agent edits across pages; **Discard changes** restores the last loaded or saved configuration. Refreshing or logging out asks before discarding drafts. Reloading or closing the tab does not retain drafts.
+
+Required fields, invalid addresses, numeric limits, lists, and JSON are checked before saving. Validation links take you to the affected field. Incomplete enabled modules stay enabled in the draft until you fix their configuration or turn them off. Existing secrets stay unchanged when their inputs are left blank. Use **Ctrl/Cmd+S** to save configuration changes.
+
+LLM provider and model drafts also stay across pages, and have their own save buttons. Saving ordinary configuration does not discard those catalog drafts.
+
 ## LLM Management And Remote Image
 
 1. Open LLM Management and add a provider name, OpenAI-compatible API address and API key. Either `https://example.com` or `https://example.com/v1` is accepted.

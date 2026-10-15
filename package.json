@@ -1,0 +1,13 @@
+{
+  "name": "home-mcp-webui",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test:webui": "node --test tests/webui.test.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}

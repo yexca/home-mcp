@@ -15,6 +15,16 @@ python -m unittest discover -s tests
 
 ## Test Coverage Areas
 
+The static WebUI has DOM interaction tests. Node.js 18 or newer is required only for these development checks; the running gateway serves the WebUI without Node.js or a frontend build step.
+
+```powershell
+npm ci
+npm run test:webui
+node --check webui/app.js
+```
+
+These tests use jsdom and mocked management responses to exercise navigation, drafts, validation, secret retention, save failures, agent controls, authentication, and provider/model management. For layout changes, also check the running WebUI at desktop and mobile widths in both themes.
+
 Current tests cover:
 
 - Configuration loading and module validation.
